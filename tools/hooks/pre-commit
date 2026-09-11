@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# pre-commit - run the disclosure gate on every commit.
+#
+# The point is rehearsal. Without this, the first real run of the gate happens
+# at 16:15 on build day, on a repo full of code written under time pressure,
+# at the exact moment a failure is unrecoverable. With it, every commit is a
+# rehearsal and the pre-publish run is a re-confirmation of something already
+# known to be clean.
+#
+# Only the disclosure check runs here, not the full prepublish sweep. A commit
+# hook that takes several seconds gets bypassed with --no-verify within a day,
+# and a gate that is routinely bypassed is not a gate. The full sweep belongs
+# at publish time, which happens once.
+#
+# Install:  git config core.hooksPath tools/hooks
+# Bypass:   git commit --no-verify   (deliberately available - a hook you cannot
+#           skip is a hook that gets deleted the first time it is wrong)
+
+set -uo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# Fail closed. This used to warn and exit 0, which meant the rehearsal the hook
+# exists to provide silently did not happen on any machine where the variable
+# was unset - and the hook looked installed the whole time. An unarmed gate that
+# reports success is the same failure mode as a gate with no rules loaded.
+if [ -z "${DISCLOSURE_BLOCKLIST:-}" ]; then
+  echo "pre-commit: \$DISCLOSURE_BLOCKLIST is not set, so the disclosure gate cannot run." >&2
+  echo "            Export it in your shell profile:" >&2
+  echo "              export DISCLOSURE_BLOCKLIST=/path/to/toast-blocklist.md" >&2
+  echo "            Refusing the commit rather than passing unchecked." >&2
+  echo "            Use --no-verify if you genuinely need to commit without it." >&2
+  exit 1
+fi
+
+if [ ! -f "$DISCLOSURE_BLOCKLIST" ]; then
+  echo "pre-commit: \$DISCLOSURE_BLOCKLIST points at a file that does not exist:" >&2
+  echo "            $DISCLOSURE_BLOCKLIST" >&2
+  exit 1
+fi
+
+# Only the staged files, not the whole tree: a hook should be about what is
+# being committed right now.
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+failed=0
+while IFS= read -r file; do
+  [ -f "$REPO_ROOT/$file" ] || continue
+  python3 "$REPO_ROOT/tools/disclosure_gate.py" "$REPO_ROOT/$file" \
+    --mode public --blocklist "$DISCLOSURE_BLOCKLIST" >/tmp/dg.$$ 2>&1 || failed=1
+  if [ "$failed" -eq 1 ]; then
+    echo "pre-commit: disclosure gate failed on $file" >&2
+    cat /tmp/dg.$$ >&2
+    rm -f /tmp/dg.$$
+    echo "" >&2
+    echo "Fix it, or commit with --no-verify if this is a deliberate fixture." >&2
+    exit 1
+  fi
+  rm -f /tmp/dg.$$
+done <<< "$staged"
+
+exit 0

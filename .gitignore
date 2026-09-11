@@ -1,0 +1,12 @@
+.DS_Store
+node_modules/
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
+
+# The builder plan lives in ai-os-personal, not here (2026-09-11). It documents
+# internal tooling, work-log paths and blocklist internals - none of which
+# belongs in a repo that goes public. The disclosure gate blocked it on the
+# commit that would have published it, which is exactly the job it was built for.
+builder-plans/
