@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// audit.mjs - run the static agent-setup checks against a real directory on disk.
+// audit.mjs - run the static prompt checks against a real directory on disk.
 //
 // This is the CLI the audit skill calls (plan task T-12c). It reuses
 // inspectSetup from src/lib/checks.js rather than re-implementing the checks, so the

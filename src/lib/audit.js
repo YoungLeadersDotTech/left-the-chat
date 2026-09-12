@@ -57,16 +57,30 @@ export function buildPromptA(staticAudit) {
   // The prompt has to visibly change with the input, or the user cannot tell the page did
   // anything before they copy it. The declared surface alone is empty for any file without
   // frontmatter, which is most low-trust pastes, so the static findings carry that signal.
+  // This block is FIRST in the prompt, deliberately. It was appended at the bottom until
+  // 2026-09-12, where it sat at line 80 of 88 inside a 150px scroll box, so every prompt looked
+  // like identical boilerplate and users correctly concluded the page had done nothing. The
+  // content was always there; being unreadable made it worthless.
   const summary = staticAudit.files.length
     ? [
-        `Files inspected (${staticAudit.files.length}): ${staticAudit.files.join(', ')}`,
-        ...staticAudit.findings.map((item) => `- [${item.severity}] ${item.id}: ${item.title}`)
+        `# Audit of ${staticAudit.files.length} file${staticAudit.files.length === 1 ? '' : 's'}: ${staticAudit.files.join(', ')}`,
+        '',
+        staticAudit.findings.length
+          ? `${staticAudit.findings.length} finding${staticAudit.findings.length === 1 ? '' : 's'} from the files alone, before any run was measured:`
+          : 'No static findings. The files are clean on everything checkable without a run.',
+        ...staticAudit.findings.map((item) => `- [${item.severity}] ${item.id}: ${item.title}`),
+        '',
+        'Confirm or contradict these where the run gives you evidence. Do not re-derive them.'
       ].join('\n')
-    : 'Nothing was loaded into the page, so there are no static findings. Report on the session anyway.'
-  return `You are being asked to report on yourself. This is a read-only probe: do not edit, create,
+    : '# Nothing loaded\n\nNo files were given to the page, so there are no static findings. Report on the session anyway.'
+  return `${summary}
+
+Now run a read-only probe of your own session and return the result.
+
+You are being asked to report on yourself. This is a read-only probe: do not edit, create,
 move, or delete any file, and do not run anything that changes state.
 
-Gather the following about the session or sessions that ran this agent setup, then return JSON and
+Gather the following about the session or sessions that ran this prompt, then return JSON and
 nothing else.
 
 1. Every tool actually invoked, with a call count for each.
@@ -99,13 +113,6 @@ complete this loop.
 Return exactly this shape, schema version ${TELEMETRY_SCHEMA_VERSION}:
 
 ${JSON.stringify(PROBE_SCHEMA, null, 2)}
-
-## What the page already found, from the files alone
-
-These came from static inspection of what was pasted or dropped. You do not need to re-derive
-them. Confirm or contradict any you can see evidence for in the run:
-
-${summary}
 
 Declared surface read from those files. Do not copy it into your answer, report what actually
 happened:
@@ -148,7 +155,7 @@ export function buildPromptB(report) {
   const dirty = report.actual?.environment?.gitDirty === true
   const branch = report.actual?.environment?.gitWorktree
 
-  return `Fix the agent-setup findings below. Before you change anything, follow this gate.
+  return `Fix the prompt findings below. Before you change anything, follow this gate.
 
 ## Step 1. Ask, do not assume
 

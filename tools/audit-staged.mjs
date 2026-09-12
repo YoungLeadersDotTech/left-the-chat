@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// audit-staged - run the static agent-setup checks against staged agent files.
+// audit-staged - run the static prompt checks against staged agent files.
 //
 // This is the auditor half of the pre-commit hook (plan task T-12d). It is the
 // behaviour a judge recognises without needing agentic explained to them: it runs
@@ -43,10 +43,10 @@ for (const item of blocking) console.error(`BLOCK  ${item.id}  ${item.title}\n  
 for (const item of advisory) console.error(`warn   ${item.id}  ${item.title}`)
 
 if (!blocking.length) {
-  if (advisory.length) console.error(`\nleft-the-chat: ${advisory.length} advisory finding(s) in ${files.length} agent file(s). Not blocking.`)
+  if (advisory.length) console.error(`\nleft-the-chat: ${advisory.length} advisory finding(s) in ${files.length} prompt file(s). Not blocking.`)
   process.exit(0)
 }
 
-console.error(`\nleft-the-chat: ${blocking.length} blocking finding(s) in ${files.length} staged agent file(s).`)
+console.error(`\nleft-the-chat: ${blocking.length} blocking finding(s) in ${files.length} staged prompt file(s).`)
 console.error('Fix them, or commit with --no-verify if you disagree. A hook you cannot skip is a hook that gets deleted.')
 process.exit(1)
