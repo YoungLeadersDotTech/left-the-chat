@@ -9,8 +9,10 @@ function Finding({ item }) {
 }
 
 export function Findings({ report }) {
-  const critical = report?.findings.filter((item) => item.severity === 'critical') || []
-  const minor = report?.findings.filter((item) => item.severity !== 'critical') || []
+  // Critical and major are the structural and declared-versus-actual findings, which are the
+  // reason this is an auditor rather than a linter. Only style and prose collapse (decision D-10).
+  const critical = report?.findings.filter((item) => item.severity === 'critical' || item.severity === 'major') || []
+  const minor = report?.findings.filter((item) => item.severity !== 'critical' && item.severity !== 'major') || []
   if (!report) return <div className="report-empty"><span>00</span><p>Your deterministic report will appear here.</p></div>
   return (
     <div className="findings-list">

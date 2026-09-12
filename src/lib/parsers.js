@@ -1,17 +1,20 @@
+import { EMPTY_TELEMETRY, coerceTelemetry } from './schema.js'
+
 function asArray(value) { return Array.isArray(value) ? value : [value] }
 function number(value) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0 }
 
-function walk(value, visit) {
-  if (!value || typeof value !== 'object') return
+function walk(value, visit, seen = new Set()) {
+  if (!value || typeof value !== 'object' || seen.has(value)) return
+  seen.add(value)
   visit(value)
   for (const child of Object.values(value)) {
-    if (Array.isArray(child)) child.forEach((entry) => walk(entry, visit))
-    else walk(child, visit)
+    if (Array.isArray(child)) child.forEach((entry) => walk(entry, visit, seen))
+    else walk(child, visit, seen)
   }
 }
 
 function parseRecords(raw) {
-  const trimmed = raw.trim()
+  const trimmed = (raw || '').trim()
   if (!trimmed) return []
   try { return asArray(JSON.parse(trimmed)) } catch {
     return trimmed.split(/\r?\n/).filter(Boolean).map((line, index) => {
@@ -20,43 +23,103 @@ function parseRecords(raw) {
   }
 }
 
+function bump(counter, key) {
+  if (!key) return
+  counter[key] = (counter[key] || 0) + 1
+}
+
+/**
+ * Normalise a raw session log into the frozen telemetry shape. Everything the declared-versus-
+ * actual checks need is derived here, so a log that does not record something leaves the field
+ * empty and the matching check simply does not fire.
+ */
 function normalize(records, source) {
-  const tools = []
+  const toolCounts = {}
+  const skillCounts = {}
+  const agents = new Set()
   const errors = []
+  const phaseSequence = []
+  let tasksCreated = 0
   let inputTokens = 0
   let outputTokens = 0
   let durationMs = 0
+  let environment = {}
 
   walk(records, (event) => {
-    if (Array.isArray(event.tools)) tools.push(...event.tools.map(String))
-    if (Array.isArray(event.errors)) errors.push(...event.errors.map((item) => String(item?.message || item)))
-    const candidate = event.tool_name || event.toolName || ((event.name && /tool/i.test(event.type || '')) ? event.name : null)
-    if (candidate) tools.push(String(candidate))
+    if (Array.isArray(event.tools)) event.tools.forEach((tool) => bump(toolCounts, String(tool)))
+    if (Array.isArray(event.skillsFired)) event.skillsFired.forEach((skill) => bump(skillCounts, String(skill)))
+    if (Array.isArray(event.agentsDispatched)) event.agentsDispatched.forEach((agent) => agents.add(String(agent)))
+    if (Array.isArray(event.phaseSequence)) event.phaseSequence.forEach((phase) => phaseSequence.push(String(phase)))
+    if (Array.isArray(event.errors)) event.errors.forEach((item) => errors.push(String(item?.message || item)))
+    if (event.environment && typeof event.environment === 'object') environment = { ...environment, ...event.environment }
+
+    const toolName = event.tool_name || event.toolName
+      || ((event.name && /tool/i.test(String(event.type || ''))) ? event.name : null)
+    if (toolName) {
+      const name = String(toolName)
+      bump(toolCounts, name)
+      // A Skill call records which skill fired; a Task* call records task creation. Both are
+      // tool invocations in the log, and both are what the runtime checks compare against.
+      if (/^Skill$/i.test(name)) {
+        const skill = event.input?.skill || event.parameters?.skill || event.arguments?.skill
+        if (skill) bump(skillCounts, String(skill))
+      }
+      if (/^TaskCreate$/i.test(name)) tasksCreated += 1
+      if (/^(Task|Agent)$/i.test(name)) {
+        const agent = event.input?.subagent_type || event.parameters?.subagent_type || event.input?.agent
+        if (agent) agents.add(String(agent))
+      }
+    }
+
+    if (event.skill || event.skill_name) bump(skillCounts, String(event.skill || event.skill_name))
+    if (event.subagent_type) agents.add(String(event.subagent_type))
+    if (typeof event.tasksCreated === 'number') tasksCreated += event.tasksCreated
+    if (event.phase !== undefined && event.phase !== null && !Array.isArray(event.phase)) {
+      phaseSequence.push(String(event.phase))
+    }
+
     const isError = event.error || event.is_error || event.status === 'error' || event.type === 'error'
     if (isError) errors.push(String(event.error?.message || event.error || event.message || 'Unhandled runtime error'))
+
     const usage = event.usage || event.token_usage || {}
     inputTokens += number(usage.input_tokens ?? usage.prompt_tokens ?? event.inputTokens)
     outputTokens += number(usage.output_tokens ?? usage.completion_tokens ?? event.outputTokens)
     durationMs += number(event.duration_ms ?? event.durationMs ?? event.latency_ms)
   })
 
-  return {
-    schemaVersion: 1,
+  return coerceTelemetry({
     source,
-    tools: [...new Set(tools)].sort(),
-    errors: [...new Set(errors)].sort(),
-    metrics: { durationMs, inputTokens, outputTokens, totalTokens: inputTokens + outputTokens }
-  }
+    tools: Object.keys(toolCounts),
+    toolCounts,
+    skillsFired: Object.keys(skillCounts),
+    skillCounts,
+    agentsDispatched: [...agents],
+    tasksCreated,
+    phaseSequence,
+    errors,
+    environment,
+    metrics: { durationMs, inputTokens, outputTokens }
+  })
 }
 
 export function parseClaudeCodeLog(raw) { return normalize(parseRecords(raw), 'claude-code') }
 export function parseOpenCodeLog(raw) { return normalize(parseRecords(raw), 'opencode') }
 
 export function parseTelemetry(raw, strategy = 'auto') {
-  if (strategy === 'claude-code') return parseClaudeCodeLog(raw)
-  if (strategy === 'opencode') return parseOpenCodeLog(raw)
-  const lower = raw.toLowerCase()
+  const trimmed = (raw || '').trim()
+  if (!trimmed) return { ...EMPTY_TELEMETRY }
+
+  // The probe's own answer already is the frozen shape. Take it as given rather than re-deriving
+  // it from a walk, which would double-count anything the agent reported both ways.
+  try {
+    const direct = JSON.parse(trimmed)
+    if (direct && !Array.isArray(direct) && direct.schemaVersion !== undefined) return coerceTelemetry(direct)
+  } catch { /* not a single probe object, fall through to log parsing */ }
+
+  if (strategy === 'claude-code') return parseClaudeCodeLog(trimmed)
+  if (strategy === 'opencode') return parseOpenCodeLog(trimmed)
+  const lower = trimmed.toLowerCase()
   return lower.includes('sessionid') || lower.includes('tool_use')
-    ? parseClaudeCodeLog(raw)
-    : parseOpenCodeLog(raw)
+    ? parseClaudeCodeLog(trimmed)
+    : parseOpenCodeLog(trimmed)
 }

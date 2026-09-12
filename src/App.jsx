@@ -71,6 +71,11 @@ export default function App() {
 
   const staticAudit = useMemo(() => inspectSetup(session.setupFiles), [session.setupFiles])
   const promptA = useMemo(() => buildPromptA(staticAudit), [staticAudit])
+  // Findings appear on drop, not on click. The static half needs no telemetry, and showing it
+  // immediately is the moment the page proves it did something without uploading anything.
+  const shownReport = report || (staticAudit.files.length
+    ? { ...staticAudit, findings: staticAudit.findings, metrics: null, preliminary: true }
+    : null)
   const promptB = report ? buildPromptB(report) : ''
   const criticalCount = report?.metrics.criticalCount || 0
 
@@ -183,14 +188,14 @@ export default function App() {
                 <select value={session.parser} onChange={(event) => setSession((current) => ({ ...current, parser: event.target.value }))}><option value="auto">Auto detect</option><option value="claude-code">Claude Code</option><option value="opencode">OpenCode</option></select>
               </div>
               <textarea className="large-input" placeholder='{"tools":["Read"],"errors":[],"metrics":{"durationMs":1240,"inputTokens":820,"outputTokens":210}}' value={session.telemetry} onChange={(event) => setSession((current) => ({ ...current, telemetry: event.target.value }))} />
-              {trust === 'low' ? <div className="path-helper"><input placeholder="Launch directory, e.g. /Users/me/project" value={launchDir} onChange={(event) => setLaunchDir(event.target.value)} /><code>{logPath}</code></div> : null}
+              {trust === 'low' ? <div className="path-helper"><input placeholder="Launch directory, e.g. ~/projects/my-project" value={launchDir} onChange={(event) => setLaunchDir(event.target.value)} /><code>{logPath}</code></div> : null}
               <button className="primary-button" type="button" onClick={runAudit}><Icon name="activity" /> Run deterministic audit</button>
             </section>
           </div>
 
           <aside className="report-column">
-            <section className="report-head"><div><p className="eyebrow">Diagnostic report</p><h2>{report ? `${criticalCount} critical ${criticalCount === 1 ? 'finding' : 'findings'}` : 'Waiting for input'}</h2></div>{hash ? <code title={hash}>SHA-256 · {hash.slice(0, 10)}</code> : null}</section>
-            <Findings report={report} />
+            <section className="report-head"><div><p className="eyebrow">Diagnostic report</p><h2>{report ? `${criticalCount} critical ${criticalCount === 1 ? 'finding' : 'findings'}` : shownReport ? `${shownReport.findings.length} from the files alone` : 'Waiting for input'}</h2></div>{hash ? <code title={hash}>SHA-256 · {hash.slice(0, 10)}</code> : null}</section>
+            <Findings report={shownReport} />
             {report ? <>
               <div className="metrics-grid">
                 <Metric label="Tokens" value={report.metrics.totalTokens.toLocaleString()} delta={baseline ? percent(report.metrics.totalTokens, baseline.metrics.totalTokens) : undefined} />
