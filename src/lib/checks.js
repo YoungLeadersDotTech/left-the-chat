@@ -63,6 +63,53 @@ function isSkillFile(name) {
   return /(^|\/)SKILL\.md$/i.test(name) || /(^|\/)skills\//.test(name)
 }
 
+// Copy-paste artifact detectors, ported from the toast-validation-suite corpus (C43, C34, C35,
+// C23). All four are pure single-file text checks - no subprocess, no git, no multi-file
+// cross-referencing - so they run identically on a lone pasted file or on every file in a zip.
+
+function stripFences(text) {
+  return text.replace(/```[\s\S]*?```/g, '')
+}
+
+// C43: a raw frontmatter key seen more than once. parseFrontmatter's own loop above silently
+// keeps only the LAST value for a repeated key, with no finding anywhere - this makes that
+// silent behaviour visible by counting occurrences independently of the parsed fields object.
+function findDuplicateFrontmatterKeys(content) {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)
+  if (!match) return []
+  const seen = new Map()
+  for (const line of match[1].split(/\r?\n/)) {
+    const pair = /^([A-Za-z][A-Za-z0-9_-]*):/.exec(line)
+    if (!pair) continue
+    seen.set(pair[1], (seen.get(pair[1]) || 0) + 1)
+  }
+  return [...seen.entries()].filter(([, count]) => count > 1).map(([key]) => key)
+}
+
+// C34: two consecutive `---` divider lines with nothing but a blank line between them - one
+// divider was meant to replace the other, not sit next to it. Fences stripped first so a
+// legitimate frontmatter example inside a code fence is never mistaken for a real doubled rule.
+function hasDoubledHorizontalRule(text) {
+  const lines = stripFences(text).split(/\r?\n/)
+  for (let i = 0; i + 2 < lines.length; i++) {
+    if (lines[i].trim() === '---' && lines[i + 1].trim() === '' && lines[i + 2].trim() === '---') return true
+  }
+  return false
+}
+
+// C35: a bold lead-in label immediately repeated as plain text right after its own colon, e.g.
+// `**Use for**: Use for: ...` - a copy-paste artifact where the label was pasted a second time.
+function findDuplicatedLeadIn(text) {
+  const match = /\*\*([A-Za-z][A-Za-z /-]{1,30})\*\*:\s*\1\b/i.exec(stripFences(text))
+  return match ? match[1] : null
+}
+
+// C23: an odd number of ``` fence markers means the file has an unclosed code fence - everything
+// after it renders (and is read) as code, including whatever real instructions come after.
+function hasUnclosedFence(text) {
+  return ((text.match(/```/g) || []).length % 2) !== 0
+}
+
 /**
  * Read the declared surface out of the dropped files, and run every check that needs only the
  * files themselves. Runs on drop, before any round trip, which is what earns the first copy-paste.
@@ -175,6 +222,28 @@ export function inspectSetup(files) {
         `${label} contains an absolute path under a named home directory. It will not resolve on anyone else's machine. Use \`~/\`.`))
     }
 
+    const duplicateKeys = findDuplicateFrontmatterKeys(content)
+    if (duplicateKeys.length) {
+      findings.push(finding(`CFG-020:${label}`, 'major', `Duplicate frontmatter key: ${duplicateKeys.join(', ')}`,
+        `${label} declares ${duplicateKeys.join(', ')} more than once at the top level. Only the first value is read here; a stray copy-pasted second line silently overrides nothing it looks like it should.`))
+    }
+
+    if (hasDoubledHorizontalRule(body)) {
+      findings.push(finding(`STYLE-004:${label}`, 'minor', 'Doubled horizontal rule',
+        `${label} has two \`---\` divider lines with only a blank line between them. Usually a copy-paste artifact where one divider was meant to replace the other.`, 'prose'))
+    }
+
+    const duplicatedLeadIn = findDuplicatedLeadIn(body)
+    if (duplicatedLeadIn) {
+      findings.push(finding(`STYLE-005:${label}`, 'minor', `Duplicated lead-in phrase: "${duplicatedLeadIn}"`,
+        `${label} has a bold label immediately repeated as plain text, e.g. \`**${duplicatedLeadIn}**: ${duplicatedLeadIn}: ...\`. Reads as a copy-paste artifact.`, 'prose'))
+    }
+
+    if (hasUnclosedFence(body)) {
+      findings.push(finding(`STYLE-006:${label}`, 'minor', 'Unclosed code fence',
+        `${label} has an odd number of \`\`\` fence markers, so something after the last one is still inside an open fence - everything from there on renders and is read as code, including any real instructions.`, 'prose'))
+    }
+
     for (const match of body.matchAll(/^#{2,3}\s*(?:Phase|Step)\s+([0-9]+[a-z]?)\b[:.\s-]*(.*)$/gim)) {
       declaredPhases.push(`${match[1]}${match[2] ? ` ${match[2].trim()}` : ''}`)
     }
@@ -217,6 +286,7 @@ export function inspectSetup(files) {
       'A long instruction file with no code block or literal example leaves every concrete decision to inference.', 'prose'))
   }
 
+  findings.push(...inspectOptionalStyle(combined))
   findings.push(...inspectPromptText(combined, combinedLength))
 
   findings.sort((a, b) => severityRank(a.severity) - severityRank(b.severity) || a.id.localeCompare(b.id))
@@ -316,6 +386,47 @@ const HEDGES = [
 ]
 
 const FILLER = ['please', 'thank you', 'thanks', 'kindly', 'I would like you to', 'I want you to', 'could you']
+
+// Optional validations: style preferences rather than functional defects. Tagged with
+// source: 'optional' so the report visibly labels them as such (Findings.jsx renders `source`
+// as a badge next to every finding) without needing to touch the page itself. Ported from the
+// toast-validation-suite corpus (C88 generalised beyond its original builder-plans scope, C52,
+// C53/C54 merged into one density-gated check).
+
+const AI_ISM_WORDS = [
+  'leverage', 'utilize', 'seamless', 'seamlessly', 'robust', 'cutting-edge', 'game-changer',
+  'game changing', 'revolutionize', 'revolutionary', 'supercharge', 'unlock', 'empower',
+  'delve', 'streamline', 'holistic', 'synergy', 'elevate', 'unparalleled', 'best-in-class',
+  'state-of-the-art', 'transformative', 'paradigm shift', 'boost productivity'
+]
+
+const EMOJI_PATTERN = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu
+
+export function inspectOptionalStyle(text) {
+  const findings = []
+  if (!text) return findings
+
+  const emDashCount = (text.match(/—/g) || []).length
+  if (emDashCount) {
+    findings.push(finding('STYLE-007', 'minor', `Contains an em dash (${emDashCount} occurrence${emDashCount === 1 ? '' : 's'})`,
+      'Many style guides ban the em dash in favour of " - " or a full stop. Not a functional defect - flagged because it is a common house-style rule and easy to miss by eye.', 'optional'))
+  }
+
+  const emojiCount = (text.match(EMOJI_PATTERN) || []).length
+  if (emojiCount >= 3) {
+    findings.push(finding('STYLE-008', 'minor', `Emoji-heavy content (${emojiCount} emoji)`,
+      'Heavy emoji use is a common AI-generated-content signal and can read as unprofessional in an instruction file. Not a functional defect.', 'optional'))
+  }
+
+  const aiIsms = AI_ISM_WORDS.filter((word) => new RegExp(`\\b${word.replace(/[-\s]/g, (char) => `\\${char === ' ' ? 's' : char}`)}\\b`, 'i').test(text))
+  if (aiIsms.length >= 3) {
+    findings.push(finding('STYLE-009', 'minor',
+      `AI-generated marketing tone: ${aiIsms.slice(0, 5).join(', ')}${aiIsms.length > 5 ? '...' : ''}`,
+      'A lone "robust" or "leverage" is normal English. Several of these clustered together reads as AI-generated corporate filler rather than a specific instruction.', 'optional'))
+  }
+
+  return findings
+}
 
 /**
  * Checks that work on prose. These run on anything: a pasted prompt, a slash command, a skill
