@@ -1,7 +1,7 @@
 const levels = [
-  { id: 'low', label: 'Low', detail: 'Paste or drop · memory only' },
-  { id: 'medium', label: 'Medium', detail: 'Files · manual state' },
-  { id: 'high', label: 'High', detail: 'Folder access · persistence' }
+  { id: 'low', label: 'Low', title: 'One-off inspection', detail: 'Paste or drop files. Clears when the page closes.' },
+  { id: 'medium', label: 'Medium', title: 'Portable review', detail: 'Add files or folders. Export the session to keep it.' },
+  { id: 'high', label: 'High', title: 'Persistent workspace', detail: 'Save in this browser and reconnect to a folder.' }
 ]
 
 export function TrustSlider({ value, onChange }) {
@@ -32,7 +32,7 @@ export function TrustSlider({ value, onChange }) {
         {levels.map((level, index) => (
             <button className={value === level.id ? 'selected' : ''} key={level.id} type="button" tabIndex="-1" onClick={() => selectIndex(index)}>
               <span className="trust-dot">{index + 1}</span>
-              <span><b>{level.label}</b><small>{level.detail}</small></span>
+              <span className="trust-copy"><b>{level.label}</b><small>{level.title}</small><span className="trust-description">{level.detail}</span></span>
             </button>
         ))}
         </div>
