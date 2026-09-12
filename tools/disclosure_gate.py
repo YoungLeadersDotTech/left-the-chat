@@ -215,6 +215,24 @@ def _iter_files(
         yield path
 
 
+#: A bare short all-caps acronym is exactly the shape that collides with
+#: base64 in an integrity hash - digits and mixed-case letters on both sides
+#: make a substring match near-arbitrary. A term with any other shape (a
+#: domain, a phrase, a path fragment) still needs substring matching, since
+#: that is how it actually leaks - inside a comment or a path, not on a line
+#: by itself. So only this shape gets word boundaries. (Examples deliberately
+#: omitted per the placeholder convention above _ENTRY - this file is scanned
+#: by the gate it implements.)
+_BARE_ACRONYM = re.compile(r"^[A-Z0-9]{2,6}$")
+
+
+def _term_pattern(term: str) -> re.Pattern[str]:
+    escaped = re.escape(term)
+    if _BARE_ACRONYM.match(term):
+        escaped = rf"\b{escaped}\b"
+    return re.compile(escaped, re.IGNORECASE)
+
+
 def _scan_text(text: str, path: Path, blocking, owned) -> list[Finding]:
     findings: list[Finding] = []
     lines = text.splitlines()
@@ -225,8 +243,9 @@ def _scan_text(text: str, path: Path, blocking, owned) -> list[Finding]:
             # sitting inside a comment or a path, not the ones on a line by
             # themselves. Anything that needs to be a real pattern belongs in
             # _SECRET_PATTERNS, where it is compiled as regex and cannot be
-            # removed by editing the blocklist.
-            pattern = re.compile(re.escape(term), re.IGNORECASE)
+            # removed by editing the blocklist. Bare acronyms are the one
+            # exception - see _term_pattern.
+            pattern = _term_pattern(term)
             for lineno, line in enumerate(lines, start=1):
                 if pattern.search(line):
                     findings.append(Finding(severity, path, lineno, term, suggestion))

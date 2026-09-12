@@ -272,6 +272,35 @@ def test_credentials_tier_entries_are_parsed(tmp_path: Path):
     assert owned == {}
 
 
+def test_bare_acronym_does_not_match_inside_a_hash(tmp_path: Path):
+    """A short all-caps acronym term (e.g. an internal team code) collided with
+    base64 lockfile integrity hashes - digits and mixed-case letters on both
+    sides make a substring match near-arbitrary. Word boundaries fix it without
+    losing the real case, where the acronym appears as a standalone token."""
+    bl = tmp_path / "bl.md"
+    bl.write_text(
+        "# Blocklist\n\n## Team and org terms\n\n"
+        "- `ZQX` - \"internal team\" or omit - [internal team]\n",
+        encoding="utf-8",
+    )
+    lockfile_like = tmp_path / "package-lock.json"
+    lockfile_like.write_text(
+        '{"integrity": "sha512-lPDGyC1ZQXou8kGcywY0YILzWlhhnRjdof3UlcoqYmS9El818LLfJJc3PXX"}\n',
+        encoding="utf-8",
+    )
+    clean = run_cli(str(lockfile_like), "--blocklist", str(bl))
+    assert clean.returncode == 0, (
+        "ZQX inside C1ZQXou is base64, not a reference:\n" + clean.stdout
+    )
+
+    real_reference = tmp_path / "notes.md"
+    real_reference.write_text("Filed under ZQX for tracking.\n", encoding="utf-8")
+    blocked = run_cli(str(real_reference), "--blocklist", str(bl))
+    assert blocked.returncode == 1, (
+        "a standalone ZQX reference must still block:\n" + blocked.stdout
+    )
+
+
 def test_absolute_home_path_is_blocked(tmp_path: Path):
     """The live false negative, reproduced. builder-plans/ carried 19 of these
     while the gate exited 0 with 'Safe to publish.'"""
