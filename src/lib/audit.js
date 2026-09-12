@@ -52,8 +52,33 @@ export function enrichAudit(staticAudit, rawTelemetry) {
  * web page cannot see what is installed on the machine, and Prompt B has to know before it is
  * written (plan task T-12a).
  */
-export function buildPromptA(staticAudit) {
+// Cap on how much source text rides along in the prompt. Big enough for any realistic prompt,
+// skill or AGENTS.md; small enough that dropping a whole plugin folder does not produce something
+// nobody can paste.
+const EMBED_BUDGET = 24000
+
+function embedSources(files) {
+  if (!files || !files.length) return ''
+  const blocks = []
+  let spent = 0
+  for (const file of files) {
+    const body = file.content || ''
+    const remaining = EMBED_BUDGET - spent
+    if (remaining <= 0) {
+      blocks.push(`### ${file.name}\n(omitted, prompt size budget reached)`)
+      continue
+    }
+    const clipped = body.length > remaining
+    const shown = clipped ? `${body.slice(0, remaining)}\n...(truncated at ${remaining.toLocaleString()} characters)` : body
+    spent += shown.length
+    blocks.push(`### ${file.name}\n\n\`\`\`\n${shown}\n\`\`\``)
+  }
+  return blocks.join('\n\n')
+}
+
+export function buildPromptA(staticAudit, files) {
   const declared = stableStringify(staticAudit.declared)
+  const sources = embedSources(files || staticAudit.sources)
   // The prompt has to visibly change with the input, or the user cannot tell the page did
   // anything before they copy it. The declared surface alone is empty for any file without
   // frontmatter, which is most low-trust pastes, so the static findings carry that signal.
@@ -74,7 +99,14 @@ export function buildPromptA(staticAudit) {
       ].join('\n')
     : '# Nothing loaded\n\nNo files were given to the page, so there are no static findings. Report on the session anyway.'
   return `${summary}
+${sources ? `
+## The prompt being audited
 
+This is the exact text the findings above refer to. Judge it as written, and if you disagree with
+a finding say so and say why.
+
+${sources}
+` : ''}
 Now run a read-only probe of your own session and return the result.
 
 You are being asked to report on yourself. This is a read-only probe: do not edit, create,
