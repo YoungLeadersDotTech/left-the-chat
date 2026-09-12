@@ -1,0 +1,26 @@
+{
+  "name": "aios-eval",
+  "description": "Professional evaluation committee with 8 domain-weighted AI expert personas, a mandatory Adversary cap reviewer, a Codification Judge, coordinator, eval-scout for discovering new evaluator candidates, and extensible contracted member system.",
+  "author": {
+    "name": "John Conneely"
+  },
+  "version": "2.5.0",
+  "agents": [
+    "./agents/eval-alumni-coordinator.md",
+    "./agents/eval-alumni-doc-hartwell.md",
+    "./agents/eval-alumni-dr-nakamura.md",
+    "./agents/eval-alumni-jack-morrison.md",
+    "./agents/eval-alumni-riley-chen.md",
+    "./agents/eval-alumni-sam-rodriguez.md",
+    "./agents/eval-alumni-sarah-winters.md",
+    "./agents/eval-alumni-zara-okafor.md",
+    "./agents/eval-alumni-adversary.md",
+    "./agents/eval-alumni-codification-judge.md",
+    "./agents/generated/eval-alumni-comic-craft.md"
+  ],
+  "skills": [
+    "./skills/eval",
+    "./skills/eval-scout",
+    "./skills/eval-scout-generate"
+  ]
+}
