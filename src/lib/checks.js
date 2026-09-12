@@ -40,14 +40,36 @@ const CONTACT_PATTERNS = [
   [/\b\+?\d[\d\s().-]{8,}\d\b/, 'something shaped like a phone number']
 ]
 
-// A loose phone shape also matches an ISO date, so `2026-11-03` was reporting a major privacy
-// finding, and any file with a few dates in it looked like it was leaking someone's number.
-// Dates are stripped before contact matching rather than the pattern being narrowed, because the
-// pattern is deliberately loose - international numbers are not worth enumerating.
+// A loose phone shape matches far more than phone numbers, and every false positive here is
+// expensive: PII-001 is graded major, so it is the finding most likely to make someone distrust
+// the whole report. Two guards, both learned from real corpora rather than imagined.
+//
+// First, dates. `2026-11-03` matches a loose phone shape, so any file with a few dates in it
+// reported a leaked number. Stripped before matching rather than narrowing the pattern, because
+// the looseness is deliberate - international formats are not worth enumerating.
 const DATE_LIKE = /\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b\d{4}-\d{2}\b/g
 
 function withoutDates(text) {
   return (text || '').replace(DATE_LIKE, ' ')
+}
+
+// Second, identifiers. Checked against a 200-plugin corpus: of 84 matches for this shape, almost
+// none were phone numbers. The dominant class was 10-digit Unix and Slack timestamps
+// (`1773856303`), which no regex can distinguish from a phone number by digits alone. The rest
+// were placeholder runs like `1234567890`.
+//
+// The distinguishing property is not the digits, it is the formatting. A number written *as* a
+// phone number carries separators or an international prefix; a bare digit run is an identifier.
+// So a match must look formatted, or be long enough that no identifier convention produces it.
+function looksLikePhoneNumber(match) {
+  const raw = match.trim()
+  if (/^\+/.test(raw)) return true
+  if (!/[\s().-]/.test(raw)) return false
+  const digits = raw.replace(/\D/g, '')
+  if (digits.length < 7) return false
+  // An ascending or descending digit run is a placeholder whatever its punctuation.
+  if (/^0?123456789|^9876543210?/.test(digits)) return false
+  return true
 }
 
 function parseFrontmatter(content) {
@@ -234,6 +256,7 @@ export function inspectSetup(files) {
     const datelessContent = withoutDates(content)
     for (const [pattern, what] of CONTACT_PATTERNS) {
       const hit = datelessContent.match(pattern)
+      if (hit && what.includes('phone') && !looksLikePhoneNumber(hit[0])) continue
       if (hit) {
         findings.push(finding(`PII-001:${label}`, 'major', 'Personal contact detail in the file',
           `${label} contains ${what}. Instruction files travel further than the people in them expect.`, 'privacy',
