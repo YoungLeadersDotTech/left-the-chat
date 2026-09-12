@@ -146,8 +146,15 @@ Return exactly this shape, schema version ${TELEMETRY_SCHEMA_VERSION}:
 
 ${JSON.stringify(PROBE_SCHEMA, null, 2)}
 
+One thing to establish before you answer, because it changes what the numbers mean. Search your
+own session logs for the prompt above. If you cannot find a session that actually ran it, say so
+plainly after the object: the telemetry you are about to report describes the session you are in
+now, which is the session doing the auditing, and its tokens and duration are the cost of this
+audit rather than the cost of that prompt. Saying nothing lets the page present one as the other.
+
 Answer with that object and nothing else. No preamble, no summary underneath. If you have
-something to say about the findings, say it after the object.
+something to say about the findings, or about whether the prompt was ever run, say it after the
+object.
 
 Then put the object on the clipboard so it survives the trip back to the page intact. On macOS,
 pipe it through \`pbcopy\`. On Windows, pipe it through \`clip\`. On Linux, \`xclip
