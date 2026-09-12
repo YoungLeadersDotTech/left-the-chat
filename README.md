@@ -29,6 +29,24 @@ inlined, so the file can be opened directly without a server.
 
 Note: a vendored Claude Code evaluation plugin used during development was removed before publication because it is internal tooling.
 
+## Plugin
+
+The same static audit also ships as a Claude Code plugin, so it can run against real
+files on disk instead of pasted text.
+
+```
+/plugin install prompt-auditor
+```
+
+This installs the `audit` skill (`skills/audit/SKILL.md`, invoked as
+`/prompt-auditor:audit`),
+which runs `scripts/audit.mjs` against a directory of `SKILL.md`, `AGENTS.md`,
+`CLAUDE.md`, or `agents/*.md`/`skills/*.md` files and prints findings, grouped
+critical then major then minor. It also offers to enable the pre-commit hook
+(`tools/audit-staged.mjs`), disabled by default, on first run.
+
+Verified with `claude plugin validate .` from the repo root.
+
 ## Hackathon context
 
 Team **Left the Chat**, AI Tinkerers Dublin hackathon, "Agents, Everywhere", 12 September 2026.

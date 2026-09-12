@@ -1,0 +1,11 @@
+{
+  "name": "prompt-auditor",
+  "description": "Deterministic offline auditor for skills, agents, and prompts. Runs the same static checks as the Left the Chat page and pre-commit hook against a directory of SKILL.md, AGENTS.md, or CLAUDE.md files.",
+  "author": {
+    "name": "John Conneely"
+  },
+  "version": "0.1.0",
+  "skills": [
+    "./skills/audit"
+  ]
+}

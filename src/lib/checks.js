@@ -144,8 +144,15 @@ export function inspectSetup(files) {
       if (/^(https?:|~|\$)/.test(ref)) continue
       const base = ref.split('/').pop()
       if (names.has(ref) || basenames.has(base)) continue
-      findings.push(finding(`REF-001:${label}:${ref}`, 'major', 'Reference points at a file that is not here',
-        `${label} references \`${ref}\`, which is not among the files loaded. Either it was not included in the drop, or the reference is dead and the runner will burn a tool call discovering that.`))
+      // At low trust there is exactly one pasted file, so an outgoing reference is unresolvable
+      // by construction rather than by fault. That is an honest, self-evident limit, so the
+      // finding carries its own remedy instead of the page asking for more access.
+      const singleFile = ordered.length === 1
+      findings.push(finding(`REF-001:${label}:${ref}`, singleFile ? 'minor' : 'major',
+        'Reference points at a file that is not here',
+        singleFile
+          ? `${label} references \`${ref}\`, and only one file was loaded, so this cannot be checked from here. Switch to Medium trust and drop the whole folder in, and every reference gets verified instead of assumed.`
+          : `${label} references \`${ref}\`, which is not among the files loaded. Either it was not included in the drop, or the reference is dead and the runner will burn a tool call discovering that.`))
     }
 
     for (const [pattern, what] of CREDENTIAL_PATTERNS) {
