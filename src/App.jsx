@@ -63,7 +63,7 @@ export default function App() {
           properties: {
             setupText: { type: 'string' },
             telemetry: { type: 'string' },
-            parser: { type: 'string', enum: ['auto', 'claude-code', 'opencode'] }
+            parser: { type: 'string', enum: ['auto', 'claude-code', 'generic'] }
           },
           required: ['setupText', 'telemetry'],
           additionalProperties: false
@@ -281,8 +281,8 @@ export default function App() {
             </section>
 
             <section className="panel telemetry-panel">
-              <div className="panel-heading"><div><span>03</span><div><h2>Runtime telemetry</h2><p>Paste returned JSON or JSONL. Claude Code and OpenCode are normalized automatically.</p></div></div>
-                <select value={session.parser} onChange={(event) => setSession((current) => ({ ...current, parser: event.target.value }))}><option value="auto">Auto detect</option><option value="claude-code">Claude Code</option><option value="opencode">OpenCode</option></select>
+              <div className="panel-heading"><div><span>03</span><div><h2>Runtime telemetry</h2><p>Paste returned JSON or JSONL. Claude Code is normalized automatically. Anything else is best-effort.</p></div></div>
+                <select value={session.parser} onChange={(event) => setSession((current) => ({ ...current, parser: event.target.value }))}><option value="auto">Auto detect</option><option value="claude-code">Claude Code</option><option value="generic">Other (generic JSON or JSONL)</option></select>
               </div>
               <textarea className="large-input" placeholder='{"tools":["Read"],"errors":[],"metrics":{"durationMs":1240,"inputTokens":820,"outputTokens":210}}' value={session.telemetry} onChange={(event) => setSession((current) => ({ ...current, telemetry: event.target.value }))} />
               {trust === 'low' ? <div className="path-helper"><input placeholder="Launch directory, e.g. ~/projects/my-project" value={launchDir} onChange={(event) => setLaunchDir(event.target.value)} /><code>{logPath}</code></div> : null}
