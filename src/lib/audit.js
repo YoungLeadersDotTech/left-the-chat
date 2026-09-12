@@ -146,6 +146,14 @@ Return exactly this shape, schema version ${TELEMETRY_SCHEMA_VERSION}:
 
 ${JSON.stringify(PROBE_SCHEMA, null, 2)}
 
+Answer with that object and nothing else. No preamble, no summary underneath. If you have
+something to say about the findings, say it after the object.
+
+Then put the object on the clipboard so it survives the trip back to the page intact. On macOS,
+pipe it through \`pbcopy\`. On Windows, pipe it through \`clip\`. On Linux, \`xclip
+-selection clipboard\`. Copying the object alone rather than your whole reply is the difference
+between a report and a shrug.
+
 Declared surface read from those files. Do not copy it into your answer, report what actually
 happened:
 
