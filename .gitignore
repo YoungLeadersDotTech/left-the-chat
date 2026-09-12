@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 .env
 .pytest_cache/
+.claude/settings.local.json
 
 # The builder plan lives in ai-os-personal, not here (2026-09-11). It documents
 # internal tooling, work-log paths and blocklist internals - none of which
