@@ -10,8 +10,17 @@ export function severityRank(severity) {
   return severity in SEVERITY_ORDER ? SEVERITY_ORDER[severity] : 99
 }
 
-export function finding(id, severity, title, detail, source = 'configuration') {
-  return { id, severity, title, detail, source }
+export function finding(id, severity, title, detail, source = 'configuration', line) {
+  return line ? { id, severity, title, detail, source, line } : { id, severity, title, detail, source }
+}
+
+// A finding you cannot locate is a finding you will not act on. Returns the 1-based line of the
+// first match, or undefined when there is nothing concrete to point at.
+export function lineOf(content, needle) {
+  if (!content || needle === undefined || needle === null) return undefined
+  const index = typeof needle === 'string' ? content.indexOf(needle) : content.search(needle)
+  if (index < 0) return undefined
+  return content.slice(0, index).split('\n').length
 }
 
 // Anthropic's published cap on a skill or agent description.
@@ -30,6 +39,16 @@ const CONTACT_PATTERNS = [
   [/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/, 'an email address'],
   [/\b\+?\d[\d\s().-]{8,}\d\b/, 'something shaped like a phone number']
 ]
+
+// A loose phone shape also matches an ISO date, so `2026-11-03` was reporting a major privacy
+// finding, and any file with a few dates in it looked like it was leaking someone's number.
+// Dates are stripped before contact matching rather than the pattern being narrowed, because the
+// pattern is deliberately loose - international numbers are not worth enumerating.
+const DATE_LIKE = /\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b\d{4}-\d{2}\b/g
+
+function withoutDates(text) {
+  return (text || '').replace(DATE_LIKE, ' ')
+}
 
 function parseFrontmatter(content) {
   const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)
@@ -61,6 +80,53 @@ function isAgentFile(name) {
 
 function isSkillFile(name) {
   return /(^|\/)SKILL\.md$/i.test(name) || /(^|\/)skills\//.test(name)
+}
+
+// Copy-paste artifact detectors, ported from the toast-validation-suite corpus (C43, C34, C35,
+// C23). All four are pure single-file text checks - no subprocess, no git, no multi-file
+// cross-referencing - so they run identically on a lone pasted file or on every file in a zip.
+
+function stripFences(text) {
+  return text.replace(/```[\s\S]*?```/g, '')
+}
+
+// C43: a raw frontmatter key seen more than once. parseFrontmatter's own loop above silently
+// keeps only the LAST value for a repeated key, with no finding anywhere - this makes that
+// silent behaviour visible by counting occurrences independently of the parsed fields object.
+function findDuplicateFrontmatterKeys(content) {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)
+  if (!match) return []
+  const seen = new Map()
+  for (const line of match[1].split(/\r?\n/)) {
+    const pair = /^([A-Za-z][A-Za-z0-9_-]*):/.exec(line)
+    if (!pair) continue
+    seen.set(pair[1], (seen.get(pair[1]) || 0) + 1)
+  }
+  return [...seen.entries()].filter(([, count]) => count > 1).map(([key]) => key)
+}
+
+// C34: two consecutive `---` divider lines with nothing but a blank line between them - one
+// divider was meant to replace the other, not sit next to it. Fences stripped first so a
+// legitimate frontmatter example inside a code fence is never mistaken for a real doubled rule.
+function hasDoubledHorizontalRule(text) {
+  const lines = stripFences(text).split(/\r?\n/)
+  for (let i = 0; i + 2 < lines.length; i++) {
+    if (lines[i].trim() === '---' && lines[i + 1].trim() === '' && lines[i + 2].trim() === '---') return true
+  }
+  return false
+}
+
+// C35: a bold lead-in label immediately repeated as plain text right after its own colon, e.g.
+// `**Use for**: Use for: ...` - a copy-paste artifact where the label was pasted a second time.
+function findDuplicatedLeadIn(text) {
+  const match = /\*\*([A-Za-z][A-Za-z /-]{1,30})\*\*:\s*\1\b/i.exec(stripFences(text))
+  return match ? match[1] : null
+}
+
+// C23: an odd number of ``` fence markers means the file has an unclosed code fence - everything
+// after it renders (and is read) as code, including whatever real instructions come after.
+function hasUnclosedFence(text) {
+  return ((text.match(/```/g) || []).length % 2) !== 0
 }
 
 /**
@@ -152,27 +218,60 @@ export function inspectSetup(files) {
         'Reference points at a file that is not here',
         singleFile
           ? `${label} references \`${ref}\`, and only one file was loaded, so this cannot be checked from here. Switch to Medium trust and drop the whole folder in, and every reference gets verified instead of assumed.`
-          : `${label} references \`${ref}\`, which is not among the files loaded. Either it was not included in the drop, or the reference is dead and the runner will burn a tool call discovering that.`))
+          : `${label} references \`${ref}\`, which is not among the files loaded. Either it was not included in the drop, or the reference is dead and the runner will burn a tool call discovering that.`,
+        'configuration', lineOf(content, ref)))
     }
 
     for (const [pattern, what] of CREDENTIAL_PATTERNS) {
-      if (pattern.test(content)) {
+      const credHit = content.match(pattern)
+      if (credHit) {
         findings.push(finding(`SEC-001:${label}`, 'critical', 'Something shaped like a credential is in the file',
-          `${label} contains ${what}. Rotate it. Agent instruction files get committed, shared, and pasted into chats far more casually than code does.`))
+          `${label} contains ${what}. Rotate it. Agent instruction files get committed, shared, and pasted into chats far more casually than code does.`,
+          'configuration', lineOf(content, credHit[0])))
         break
       }
     }
+    const datelessContent = withoutDates(content)
     for (const [pattern, what] of CONTACT_PATTERNS) {
-      if (pattern.test(content)) {
+      const hit = datelessContent.match(pattern)
+      if (hit) {
         findings.push(finding(`PII-001:${label}`, 'major', 'Personal contact detail in the file',
-          `${label} contains ${what}. Instruction files travel further than the people in them expect.`, 'privacy'))
+          `${label} contains ${what}. Instruction files travel further than the people in them expect.`, 'privacy',
+          lineOf(content, hit[0].trim())))
         break
       }
     }
 
     if (/(^|[^~\w])\/(Users|home)\/[A-Za-z0-9._-]+\//.test(content)) {
       findings.push(finding(`CFG-017:${label}`, 'major', 'Hard-coded home directory',
-        `${label} contains an absolute path under a named home directory. It will not resolve on anyone else's machine. Use \`~/\`.`))
+        `${label} contains an absolute path under a named home directory. It will not resolve on anyone else's machine. Use \`~/\`.`,
+        'configuration', lineOf(content, /(^|[^~\w])\/(Users|home)\/[A-Za-z0-9._-]+\//)))
+    }
+
+    const duplicateKeys = findDuplicateFrontmatterKeys(content)
+    if (duplicateKeys.length) {
+      findings.push(finding(`CFG-020:${label}`, 'major', `Duplicate frontmatter key: ${duplicateKeys.join(', ')}`,
+        `${label} declares ${duplicateKeys.join(', ')} more than once at the top level. Only the first value is read here; a stray copy-pasted second line silently overrides nothing it looks like it should.`,
+        'configuration', lineOf(content, `${duplicateKeys[0]}:`)))
+    }
+
+    if (hasDoubledHorizontalRule(body)) {
+      findings.push(finding(`STYLE-004:${label}`, 'minor', 'Doubled horizontal rule',
+        `${label} has two \`---\` divider lines with only a blank line between them. Usually a copy-paste artifact where one divider was meant to replace the other.`, 'prose',
+        lineOf(content, /^-{3,}\s*\n\s*\n-{3,}\s*$/m)))
+    }
+
+    const duplicatedLeadIn = findDuplicatedLeadIn(body)
+    if (duplicatedLeadIn) {
+      findings.push(finding(`STYLE-005:${label}`, 'minor', `Duplicated lead-in phrase: "${duplicatedLeadIn}"`,
+        `${label} has a bold label immediately repeated as plain text, e.g. \`**${duplicatedLeadIn}**: ${duplicatedLeadIn}: ...\`. Reads as a copy-paste artifact.`, 'prose',
+        lineOf(content, `**${duplicatedLeadIn}**`)))
+    }
+
+    if (hasUnclosedFence(body)) {
+      findings.push(finding(`STYLE-006:${label}`, 'minor', 'Unclosed code fence',
+        `${label} has an odd number of \`\`\` fence markers, so something after the last one is still inside an open fence - everything from there on renders and is read as code, including any real instructions.`, 'prose',
+        lineOf(content, content.slice(content.lastIndexOf('```')))))
     }
 
     for (const match of body.matchAll(/^#{2,3}\s*(?:Phase|Step)\s+([0-9]+[a-z]?)\b[:.\s-]*(.*)$/gim)) {
@@ -218,6 +317,7 @@ export function inspectSetup(files) {
   }
 
   findings.push(...inspectPromptRisk(combined, combinedLength))
+  findings.push(...inspectOptionalStyle(combined))
   findings.push(...inspectPromptText(combined, combinedLength))
   findings.push(...inspectPromptStructure(combined, combinedLength))
 
@@ -319,6 +419,47 @@ const HEDGES = [
 
 const FILLER = ['please', 'thank you', 'thanks', 'kindly', 'I would like you to', 'I want you to', 'could you']
 
+// Optional validations: style preferences rather than functional defects. Tagged with
+// source: 'optional' so the report visibly labels them as such (Findings.jsx renders `source`
+// as a badge next to every finding) without needing to touch the page itself. Ported from the
+// toast-validation-suite corpus (C88 generalised beyond its original builder-plans scope, C52,
+// C53/C54 merged into one density-gated check).
+
+const AI_ISM_WORDS = [
+  'leverage', 'utilize', 'seamless', 'seamlessly', 'robust', 'cutting-edge', 'game-changer',
+  'game changing', 'revolutionize', 'revolutionary', 'supercharge', 'unlock', 'empower',
+  'delve', 'streamline', 'holistic', 'synergy', 'elevate', 'unparalleled', 'best-in-class',
+  'state-of-the-art', 'transformative', 'paradigm shift', 'boost productivity'
+]
+
+const EMOJI_PATTERN = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu
+
+export function inspectOptionalStyle(text) {
+  const findings = []
+  if (!text) return findings
+
+  const emDashCount = (text.match(/—/g) || []).length
+  if (emDashCount) {
+    findings.push(finding('STYLE-007', 'minor', `Contains an em dash (${emDashCount} occurrence${emDashCount === 1 ? '' : 's'})`,
+      'Many style guides ban the em dash in favour of " - " or a full stop. Not a functional defect - flagged because it is a common house-style rule and easy to miss by eye.', 'optional'))
+  }
+
+  const emojiCount = (text.match(EMOJI_PATTERN) || []).length
+  if (emojiCount >= 3) {
+    findings.push(finding('STYLE-008', 'minor', `Emoji-heavy content (${emojiCount} emoji)`,
+      'Heavy emoji use is a common AI-generated-content signal and can read as unprofessional in an instruction file. Not a functional defect.', 'optional'))
+  }
+
+  const aiIsms = AI_ISM_WORDS.filter((word) => new RegExp(`\\b${word.replace(/[-\s]/g, (char) => `\\${char === ' ' ? 's' : char}`)}\\b`, 'i').test(text))
+  if (aiIsms.length >= 3) {
+    findings.push(finding('STYLE-009', 'minor',
+      `AI-generated marketing tone: ${aiIsms.slice(0, 5).join(', ')}${aiIsms.length > 5 ? '...' : ''}`,
+      'A lone "robust" or "leverage" is normal English. Several of these clustered together reads as AI-generated corporate filler rather than a specific instruction.', 'optional'))
+  }
+
+  return findings
+}
+
 /**
  * Checks that work on prose. These run on anything: a pasted prompt, a slash command, a skill
  * body, an AGENTS.md. The static checks above need frontmatter to say much; these do not, which
@@ -388,8 +529,10 @@ export function inspectPromptRisk(text, length) {
     ? `Unbounded access to your machine, with no gate: "${reach[0]}"`
     : `Irreversible action with no gate: ${outward.slice(0, 2).join(', ')}`
 
+  const anchor = reach.length ? reach[0] : outward[0]
   return [finding('PROMPT-009', 'critical', title,
-    `This prompt grants ${what} and never once tells the model to ask, confirm, preview, or stop. Every other finding here costs you tokens or a re-run. This one is the class that costs you data or money, and it is the only one where being wrong is not recoverable by running it again. Add the gate: say what it must ask about before doing it.`, 'prompt')]
+    `This prompt grants ${what} and never once tells the model to ask, confirm, preview, or stop. Every other finding here costs you tokens or a re-run. This one is the class that costs you data or money, and it is the only one where being wrong is not recoverable by running it again. Add the gate: say what it must ask about before doing it.`, 'prompt',
+    lineOf(text, new RegExp(anchor.replace(' ', '\\s+'), 'i')))]
 }
 
 export function inspectPromptText(text, length) {
@@ -399,7 +542,8 @@ export function inspectPromptText(text, length) {
   const hits = HEDGES.filter((word) => new RegExp(`\\b${word.replace('.', '\\.')}`, 'i').test(text))
   if (hits.length) {
     findings.push(finding('PROMPT-001', 'major', `${hits.length} vague instruction${hits.length === 1 ? '' : 's'}: ${hits.slice(0, 4).join(', ')}${hits.length > 4 ? '...' : ''}`,
-      'Each of these is a decision you declined to make, handed to the model to guess at, and it will guess differently on different runs. They are the biggest single source of drift in an otherwise sound prompt. Say what "appropriate" means here.', 'prompt'))
+      'Each of these is a decision you declined to make, handed to the model to guess at, and it will guess differently on different runs. They are the biggest single source of drift in an otherwise sound prompt. Say what "appropriate" means here.', 'prompt',
+      lineOf(text, new RegExp(hits[0].replace('.', '\\.'), 'i'))))
   }
 
   if (!/\b(json|yaml|markdown|bullet|table|csv|xml|schema|format|one line per|return exactly|respond with)/i.test(text)) {
@@ -430,7 +574,8 @@ export function inspectPromptText(text, length) {
   const filler = FILLER.filter((word) => new RegExp(`\\b${word}\\b`, 'i').test(text))
   if (filler.length >= 2) {
     findings.push(finding('PROMPT-007', 'minor', `Politeness filler: ${filler.slice(0, 3).join(', ')}`,
-      'Harmless in a short prompt. In a skill that fires hundreds of times a day it is tokens you pay for on every single invocation and it changes nothing about the output.', 'prompt'))
+      'Harmless in a short prompt. In a skill that fires hundreds of times a day it is tokens you pay for on every single invocation and it changes nothing about the output.', 'prompt',
+      lineOf(text, new RegExp(filler[0], 'i'))))
   }
 
   const steps = (text.match(/^\s*(?:\d+[.)]|[-*])\s+/gm) || []).length

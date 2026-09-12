@@ -1,7 +1,7 @@
 function Finding({ item }) {
   return (
     <article className={`finding finding-${item.severity}`}>
-      <div><span>{item.id}</span><em>{item.source}</em></div>
+      <div><span>{item.id}</span>{item.line ? <b className="finding-line">line {item.line}</b> : null}<em>{item.source}</em></div>
       <h3>{item.title}</h3>
       <p>{item.detail}</p>
     </article>
