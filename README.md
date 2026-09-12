@@ -5,7 +5,7 @@ npm install
 npm run dev
 ```
 
-A privacy-first, deterministic audit loop for agent setup files and runtime telemetry.
+A privacy-first, deterministic audit loop for prompt files and runtime telemetry.
 Everything runs in the browser. No backend, API key, upload, or network call is required.
 
 ## Standalone build
