@@ -54,6 +54,15 @@ export function enrichAudit(staticAudit, rawTelemetry) {
  */
 export function buildPromptA(staticAudit) {
   const declared = stableStringify(staticAudit.declared)
+  // The prompt has to visibly change with the input, or the user cannot tell the page did
+  // anything before they copy it. The declared surface alone is empty for any file without
+  // frontmatter, which is most low-trust pastes, so the static findings carry that signal.
+  const summary = staticAudit.files.length
+    ? [
+        `Files inspected (${staticAudit.files.length}): ${staticAudit.files.join(', ')}`,
+        ...staticAudit.findings.map((item) => `- [${item.severity}] ${item.id}: ${item.title}`)
+      ].join('\n')
+    : 'Nothing was loaded into the page, so there are no static findings. Report on the session anyway.'
   return `You are being asked to report on yourself. This is a read-only probe: do not edit, create,
 move, or delete any file, and do not run anything that changes state.
 
@@ -90,8 +99,15 @@ Return exactly this shape, schema version ${TELEMETRY_SCHEMA_VERSION}:
 
 ${JSON.stringify(PROBE_SCHEMA, null, 2)}
 
-Declared surface read from the files, for your reference. Do not copy it into your answer, report
-what actually happened:
+## What the page already found, from the files alone
+
+These came from static inspection of what was pasted or dropped. You do not need to re-derive
+them. Confirm or contradict any you can see evidence for in the run:
+
+${summary}
+
+Declared surface read from those files. Do not copy it into your answer, report what actually
+happened:
 
 ${declared}`
 }
