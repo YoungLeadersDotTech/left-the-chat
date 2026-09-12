@@ -71,9 +71,20 @@ nothing else.
    agent's own name and version, the current git branch (null if not a git repo), and whether the
    working tree is dirty.
 
-Where to look: Claude Code writes session logs under \`~/.claude/projects/<slugified-path>/\`.
-OpenCode writes under its own session directory. If you cannot find a log, answer from what you can
-observe in this session and set any field you could not determine to null rather than guessing.
+Where to look: Claude Code writes session logs under \`~/.claude/projects/<slugified-path>/\`,
+where the slug is the launch directory with \`/\` and \`.\` replaced by \`-\`. OpenCode writes under its
+own session directory.
+
+**If you cannot find a session log, do not give up and do not guess.** Answer from what you can
+observe in this session, set anything you genuinely cannot determine to null, and then do one more
+thing: start recording from here. Append one JSON line per tool call to \`./.left-the-chat/session.jsonl\`
+for the rest of this session, each line \`{"tool_name":"...","skill":"...","usage":{...},"phase":"..."}\`.
+Tell the user that path. The second measurement will then have a log to read even though the first
+did not, which is the whole point of a before-and-after.
+
+This is why this loop does not need to know where your agent keeps its logs. If it has them, it
+reads them. If it does not, it asks you to make them. Any agent that can append to a file can
+complete this loop.
 
 Return exactly this shape, schema version ${TELEMETRY_SCHEMA_VERSION}:
 
@@ -140,6 +151,17 @@ rollback boundary is clean.`
 
 If the answer is A, produce the diffs and then ask a second question: "Apply these now?" Do not
 apply on the strength of the first answer.
+
+Then ask which findings, because the cheapest useful loop is rarely the complete one:
+
+  "Which findings should I close?"
+  A) The ${report.metrics.criticalCount} critical only, then re-measure. (Recommended first pass)
+  B) Critical and major, ${blocking.length} in total.
+  C) Everything, including style and prose.
+
+Recommend A on the first pass and say why: the first run is where most of the token cost sits, so
+closing the expensive findings and re-measuring shows the largest delta for the least work, and
+the next pass starts from a smaller list.
 
 ## Step 2. Rules for the edits
 

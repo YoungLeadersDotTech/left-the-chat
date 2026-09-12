@@ -101,7 +101,16 @@ for (const field of ['skillsFired', 'agentsDispatched', 'tasksCreated', 'phaseSe
   assert.match(promptA, new RegExp(field), `Prompt A must probe for ${field}`)
 }
 
-// 8. No python3 in the environment means Prompt B says so rather than pretending.
+// 8. Prompt A must carry the write-your-own-log fallback. This is what makes the loop work on an
+//    agent whose log location nobody knows, Codex included, without writing a parser for it.
+assert.match(promptA, /session\.jsonl/, 'Prompt A must name a path to record to when no log is found')
+assert.match(promptA, /do not guess/i, 'Prompt A must forbid guessing when the log is absent')
+
+// 9. Prompt B must let the user pick how much to close, and recommend the cheap first pass.
+assert.match(promptB, /Which findings should I close/, 'Prompt B must offer a findings scope choice')
+assert.match(promptB, /Recommended first pass/, 'Prompt B must recommend critical-only first')
+
+// 10. No python3 in the environment means Prompt B says so rather than pretending.
 const noPython = enrichAudit(inspectSetup(FIXTURE_FILES), parseTelemetry(
   JSON.stringify({ schemaVersion: 2, environment: { python3: null }, tools: [], metrics: {} }), 'auto'))
 assert.match(buildPromptB(noPython), /not a clean bill of health/, 'a missing depth pass must be stated, not hidden')
