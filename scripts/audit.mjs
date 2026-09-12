@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // audit.mjs - run the static agent-setup checks against a real directory on disk.
 //
-// This is the CLI the audit-agent-setup skill calls (plan task T-12c). It reuses
+// This is the CLI the audit skill calls (plan task T-12c). It reuses
 // inspectSetup from src/lib/checks.js rather than re-implementing the checks, so the
 // page, the pre-commit hook, and this CLI can never drift into three different
 // answers for the same input (same reasoning as tools/audit-staged.mjs, which reuses

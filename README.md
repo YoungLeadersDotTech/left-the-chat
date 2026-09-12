@@ -38,7 +38,8 @@ files on disk instead of pasted text.
 /plugin install prompt-auditor
 ```
 
-This installs the `audit-agent-setup` skill (`skills/audit-agent-setup/SKILL.md`),
+This installs the `audit` skill (`skills/audit/SKILL.md`, invoked as
+`/prompt-auditor:audit`),
 which runs `scripts/audit.mjs` against a directory of `SKILL.md`, `AGENTS.md`,
 `CLAUDE.md`, or `agents/*.md`/`skills/*.md` files and prints findings, grouped
 critical then major then minor. It also offers to enable the pre-commit hook

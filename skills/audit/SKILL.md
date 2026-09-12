@@ -1,10 +1,10 @@
 ---
-name: audit-agent-setup
-description: Runs the Left the Chat static audit on a directory of SKILL.md, AGENTS.md, or CLAUDE.md files and prints findings. Use for local agent-setup review. Not for runtime telemetry comparison (use the page) or unrelated code review.
+name: audit
+description: Runs the Left the Chat static audit on a directory of skills, agents, or prompts (SKILL.md, AGENTS.md, CLAUDE.md) and prints findings. Use for local review of these. Not for runtime telemetry comparison (use the page) or unrelated code review.
 allowed-tools: Read, Glob, Grep, Bash
 ---
 
-# Audit agent setup
+# Audit
 
 Run the same static checks the Left the Chat page and its pre-commit hook use, at
 full local depth, against a directory the user names.
