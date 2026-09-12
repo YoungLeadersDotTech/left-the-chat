@@ -14,12 +14,6 @@ const pipelineSteps = [
   { label: 'Telemetry', detail: 'Bring the runtime evidence back' },
   { label: 'Fix and compare', detail: 'Act on findings and measure again' }
 ]
-const trustModes = [
-  { id: 'low', label: 'Low', title: 'One-off inspection', detail: 'Paste or drop files. The session stays in memory and clears when the page closes.' },
-  { id: 'medium', label: 'Medium', title: 'Portable review', detail: 'Add files or folders, then manually export and import the session when you want to keep it.' },
-  { id: 'high', label: 'High', title: 'Persistent workspace', detail: 'Save the session in this browser and reconnect to a chosen folder when local mode is available.' }
-]
-
 function Metric({ label, value, delta }) {
   return <div className="metric"><span>{label}</span><strong>{value}</strong>{delta !== undefined ? <em className={delta <= 0 ? 'good' : 'bad'}>{delta > 0 ? '+' : ''}{delta}%</em> : null}</div>
 }
@@ -228,10 +222,6 @@ export default function App() {
         </section>
 
         <TrustSlider value={trust} onChange={changeTrust} />
-
-        <section className="trust-guide" aria-label="Trust level differences">
-          {trustModes.map((mode) => <article className={trust === mode.id ? 'selected' : ''} key={mode.id}><span>{mode.label}</span><h2>{mode.title}</h2><p>{mode.detail}</p></article>)}
-        </section>
 
         {trust === 'high' && !highAvailable ? (
           <section className="local-mode-notice">
