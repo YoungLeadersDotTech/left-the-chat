@@ -103,7 +103,15 @@ function normalize(records, source) {
 }
 
 export function parseClaudeCodeLog(raw) { return normalize(parseRecords(raw), 'claude-code') }
-export function parseOpenCodeLog(raw) { return normalize(parseRecords(raw), 'opencode') }
+
+// T-12e: this was called parseOpenCodeLog and the strategy was 'opencode', on an assumption
+// nobody had checked against a real install. Checked one: OpenCode keeps session data in a
+// SQLite database (~/.local/share/opencode/opencode.db), not a JSON or JSONL log file, and its
+// tool-call rows carry a bare `tool` field rather than `tool_name`/`toolName`, so this walker
+// would produce near-zero counts against real OpenCode data with no error shown. The walker
+// itself is a reasonable generic JSON/JSONL normalizer - it just is not an OpenCode parser, so
+// it is renamed to say what it actually does.
+export function parseGenericLog(raw) { return normalize(parseRecords(raw), 'generic') }
 
 export function parseTelemetry(raw, strategy = 'auto') {
   const trimmed = (raw || '').trim()
@@ -117,9 +125,9 @@ export function parseTelemetry(raw, strategy = 'auto') {
   } catch { /* not a single probe object, fall through to log parsing */ }
 
   if (strategy === 'claude-code') return parseClaudeCodeLog(trimmed)
-  if (strategy === 'opencode') return parseOpenCodeLog(trimmed)
+  if (strategy === 'generic') return parseGenericLog(trimmed)
   const lower = trimmed.toLowerCase()
   return lower.includes('sessionid') || lower.includes('tool_use')
     ? parseClaudeCodeLog(trimmed)
-    : parseOpenCodeLog(trimmed)
+    : parseGenericLog(trimmed)
 }

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node tests/js/audit.test.mjs && node tests/js/audit-cli.test.mjs"
+    "test": "node tests/js/audit.test.mjs && node tests/js/audit-cli.test.mjs && node tests/js/parsers.test.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "4.3.4",
