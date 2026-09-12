@@ -1,15 +1,14 @@
 const levels = [
-  { id: 'low', label: 'Low', detail: 'Paste only · memory only' },
+  { id: 'low', label: 'Low', detail: 'Paste or drop · memory only' },
   { id: 'medium', label: 'Medium', detail: 'Files · manual state' },
   { id: 'high', label: 'High', detail: 'Folder access · persistence' }
 ]
 
-export function TrustSlider({ value, onChange, highAvailable }) {
+export function TrustSlider({ value, onChange }) {
   const selectedIndex = levels.findIndex((level) => level.id === value)
   const progress = selectedIndex * 50
 
   function selectIndex(index) {
-    if (index === 2 && !highAvailable) return
     onChange(levels[index].id)
   }
 
@@ -30,15 +29,12 @@ export function TrustSlider({ value, onChange, highAvailable }) {
           style={{ '--trust-progress': `${progress}%` }}
         />
         <div className="trust-track" aria-hidden="true">
-        {levels.map((level, index) => {
-          const disabled = level.id === 'high' && !highAvailable
-          return (
-            <button className={`${value === level.id ? 'selected' : ''} ${disabled ? 'disabled' : ''}`} key={level.id} type="button" tabIndex="-1" disabled={disabled} onClick={() => selectIndex(index)}>
+        {levels.map((level, index) => (
+            <button className={value === level.id ? 'selected' : ''} key={level.id} type="button" tabIndex="-1" onClick={() => selectIndex(index)}>
               <span className="trust-dot">{index + 1}</span>
-              <span><b>{level.label}</b><small>{disabled ? 'Unavailable here' : level.detail}</small></span>
+              <span><b>{level.label}</b><small>{level.detail}</small></span>
             </button>
-          )
-        })}
+        ))}
         </div>
       </div>
     </fieldset>
