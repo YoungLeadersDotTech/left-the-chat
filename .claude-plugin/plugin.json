@@ -1,6 +1,6 @@
 {
-  "name": "left-the-chat",
-  "description": "Deterministic offline auditor for agent setups. Runs the same static checks as the Left the Chat page and pre-commit hook against a directory of skill, agent, or AGENTS.md files.",
+  "name": "prompt-auditor",
+  "description": "Deterministic offline auditor for skills, agents, and prompts. Runs the same static checks as the Left the Chat page and pre-commit hook against a directory of SKILL.md, AGENTS.md, or CLAUDE.md files.",
   "author": {
     "name": "John Conneely"
   },

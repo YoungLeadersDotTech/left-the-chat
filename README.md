@@ -35,7 +35,7 @@ The same static audit also ships as a Claude Code plugin, so it can run against 
 files on disk instead of pasted text.
 
 ```
-/plugin install left-the-chat
+/plugin install prompt-auditor
 ```
 
 This installs the `audit-agent-setup` skill (`skills/audit-agent-setup/SKILL.md`),
