@@ -115,5 +115,14 @@ const noPython = enrichAudit(inspectSetup(FIXTURE_FILES), parseTelemetry(
   JSON.stringify({ schemaVersion: 2, environment: { python3: null }, tools: [], metrics: {} }), 'auto'))
 assert.match(buildPromptB(noPython), /not a clean bill of health/, 'a missing depth pass must be stated, not hidden')
 
+// 11. The pre-commit auditor's block condition (T-12d). The hook exits non-zero on any critical
+//     finding, so a skill with no description must produce one. Verified live: exit 1 on this
+//     input, exit 0 once a description is added.
+const hookInput = [{ name: 'skills/x/SKILL.md', content: '---\nname: x\nallowed-tools: Read\n---\nDo it.\n' }]
+assert.ok(
+  inspectSetup(hookInput).findings.some((item) => item.severity === 'critical' && item.id.startsWith('CFG-013')),
+  'a skill with no description must be a critical finding, which is what the commit hook blocks on'
+)
+
 console.log(`PASS  ${first.findings.length} findings, ${first.metrics.criticalCount} critical, ${first.metrics.majorCount} major`)
 console.log(`      hash ${(await sha256(first)).slice(0, 16)} stable across 3 runs`)
