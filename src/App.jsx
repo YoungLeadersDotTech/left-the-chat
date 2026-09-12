@@ -8,6 +8,17 @@ import { downloadJson, sha256 } from './lib/deterministic'
 import { parseTelemetry } from './lib/parsers'
 
 const emptySession = { setupFiles: [], telemetry: '', parser: 'auto', baseline: null }
+const pipelineSteps = [
+  { label: 'Setup', detail: 'Add instructions and configuration' },
+  { label: 'Probe', detail: 'Run a generated test in your agent' },
+  { label: 'Telemetry', detail: 'Bring the runtime evidence back' },
+  { label: 'Fix and compare', detail: 'Act on findings and measure again' }
+]
+const trustModes = [
+  { id: 'low', label: 'Low', title: 'One-off inspection', detail: 'Paste or drop files. The session stays in memory and clears when the page closes.' },
+  { id: 'medium', label: 'Medium', title: 'Portable review', detail: 'Add files or folders, then manually export and import the session when you want to keep it.' },
+  { id: 'high', label: 'High', title: 'Persistent workspace', detail: 'Save the session in this browser and reconnect to a chosen folder when local mode is available.' }
+]
 
 function Metric({ label, value, delta }) {
   return <div className="metric"><span>{label}</span><strong>{value}</strong>{delta !== undefined ? <em className={delta <= 0 ? 'good' : 'bad'}>{delta > 0 ? '+' : ''}{delta}%</em> : null}</div>
@@ -21,16 +32,22 @@ export default function App() {
   const [hash, setHash] = useState('')
   const [copied, setCopied] = useState('')
   const [launchDir, setLaunchDir] = useState('')
-  const highAvailable = typeof window.showDirectoryPicker === 'function' && location.protocol !== 'file:'
+  const [dragActive, setDragActive] = useState(false)
+  const standaloneFile = location.protocol === 'file:'
+  const directoryPickerSupported = typeof window.showDirectoryPicker === 'function'
+  const highAvailable = directoryPickerSupported && !standaloneFile
 
   useEffect(() => { document.documentElement.dataset.theme = theme }, [theme])
   useEffect(() => {
     if (trust !== 'high') return
-    const stored = localStorage.getItem('left-the-chat-session')
-    if (stored) { try { setSession(JSON.parse(stored)) } catch { /* invalid local data stays ignored */ } }
+    try {
+      const stored = localStorage.getItem('left-the-chat-session')
+      if (stored) setSession(JSON.parse(stored))
+    } catch { /* unavailable or invalid local data stays ignored */ }
   }, [trust])
   useEffect(() => {
-    if (trust === 'high') localStorage.setItem('left-the-chat-session', JSON.stringify(session))
+    if (trust !== 'high') return
+    try { localStorage.setItem('left-the-chat-session', JSON.stringify(session)) } catch { /* manual export remains available */ }
   }, [session, trust])
   useEffect(() => {
     const context = document.modelContext
@@ -96,10 +113,29 @@ export default function App() {
         }
       } else files.push({ name: file.webkitRelativePath || file.name, content: await file.text() })
     }
-    setSession((current) => ({ ...current, setupFiles: [...current.setupFiles, ...files].sort((a, b) => a.name.localeCompare(b.name)) }))
+    setSession((current) => {
+      const merged = new Map(current.setupFiles.map((file) => [file.name, file]))
+      files.forEach((file) => merged.set(file.name, file))
+      return { ...current, setupFiles: [...merged.values()].sort((a, b) => a.name.localeCompare(b.name)) }
+    })
+  }
+
+  function updatePastedSetup(content) {
+    setSession((current) => {
+      const setupFiles = current.setupFiles.filter((file) => file.name !== 'pasted-setup.txt')
+      if (content) setupFiles.push({ name: 'pasted-setup.txt', content })
+      return { ...current, setupFiles: setupFiles.sort((a, b) => a.name.localeCompare(b.name)) }
+    })
+  }
+
+  function dropSetupFiles(event) {
+    event.preventDefault()
+    setDragActive(false)
+    if (event.dataTransfer.files.length) addFiles(event.dataTransfer.files)
   }
 
   async function pickDirectory() {
+    if (!highAvailable) return
     const handle = await window.showDirectoryPicker()
     const files = []
     async function walk(directory, prefix = '') {
@@ -151,30 +187,57 @@ export default function App() {
 
       <main>
         <section className="intro-row">
-          <div><p className="eyebrow">Deterministic agent diagnostics</p><h1>Measure the setup.<br /><span>Close the loop.</span></h1></div>
-          <p>Inspect agent configuration, compare declared access with real runtime behavior, and generate a reproducible fix prompt—all inside your browser.</p>
+          <div><p className="eyebrow">Deterministic agent diagnostics</p><h1>Your agent says one thing.<br /><span>Measure what it does.</span></h1></div>
+          <div className="intro-copy">
+            <p>Left the Chat compares your agent’s setup with evidence from a real run. Add the configuration, follow the generated probe, then bring the telemetry back to get specific findings and a reusable fix prompt.</p>
+            <div className="hero-points"><span>Runs locally</span><span>No API key</span><span>Reproducible results</span></div>
+          </div>
         </section>
 
-        <TrustSlider value={trust} onChange={(level) => { setTrust(level); if (level === 'low') { setSession(emptySession); setReport(null); setHash('') } }} highAvailable={highAvailable} />
+        <TrustSlider value={trust} onChange={(level) => { setTrust(level); if (level === 'low') { setSession(emptySession); setReport(null); setHash('') } }} />
+
+        <section className="trust-guide" aria-label="Trust level differences">
+          {trustModes.map((mode) => <article className={trust === mode.id ? 'selected' : ''} key={mode.id}><span>{mode.label}</span><h2>{mode.title}</h2><p>{mode.detail}</p></article>)}
+        </section>
+
+        {trust === 'high' && !highAvailable ? (
+          <section className="local-mode-notice">
+            <div className="local-mode-copy">
+              <p className="eyebrow">High trust compatibility mode</p>
+              <h2>{standaloneFile ? 'Start local mode for persistent folder access' : 'Use Chrome or Edge for persistent folder access'}</h2>
+              <p>{standaloneFile ? 'High is still selected, and you can use manual files and folders below. Browsers only allow a reusable folder connection from a trusted local address. The npm command starts that address; it does not add a backend or upload your files.' : 'This browser does not provide the folder permission used by High trust. Manual file and folder selection still works, or open the app in a current desktop version of Chrome or Edge.'}</p>
+            </div>
+            {standaloneFile ? <div className="local-setup">
+              <div><span>1</span><div><strong>Check Node.js and npm</strong><p>Open Terminal on macOS or PowerShell on Windows, then run:</p><pre>node --version{`\n`}npm --version</pre><button type="button" onClick={() => copy('node --version\nnpm --version', 'npm-check')}>{copied === 'npm-check' ? 'Copied' : 'Copy check commands'}</button></div></div>
+              <div><span>2</span><div><strong>Start the local website</strong><p>In the unzipped repository folder, run:</p><pre>npm install{`\n`}npm run dev</pre><button type="button" onClick={() => copy('npm install\nnpm run dev', 'npm-run')}>{copied === 'npm-run' ? 'Copied' : 'Copy run commands'}</button></div></div>
+              <p className="install-note">If either check command is missing, install the current <a href="https://nodejs.org/en/download" target="_blank" rel="noreferrer">Node.js LTS release</a>. npm is included with Node.js. Then open the localhost address printed in the terminal.</p>
+            </div> : null}
+          </section>
+        ) : trust === 'high' ? (
+          <section className="local-mode-ready"><span /><div><strong>Persistent folder access is ready</strong><p>This page is running from a trusted local address. Files remain on this computer.</p></div></section>
+        ) : null}
 
         <div className="pipeline-nav" aria-label="Audit pipeline">
-          {['Setup', 'Probe', 'Telemetry', 'Fix & compare'].map((label, index) => <div key={label}><span>0{index + 1}</span><b>{label}</b></div>)}
+          {pipelineSteps.map((step, index) => <div className="pipeline-step" key={step.label}><span>0{index + 1}</span><div><b>{step.label}</b><small>{step.detail}</small></div></div>)}
         </div>
 
         <section className="workbench">
           <div className="input-column">
             <section className="panel ingest-panel">
-              <div className="panel-heading"><div><span>01</span><div><h2>Setup input</h2><p>{trust === 'low' ? 'Paste configuration text. Nothing is stored.' : 'Add configuration files or a folder.'}</p></div></div><code>{session.setupFiles.length} files</code></div>
-              {trust === 'low' ? (
-                <textarea className="large-input" placeholder="Paste AGENTS.md, settings JSON, or agent instructions…" value={session.setupFiles[0]?.content || ''} onChange={(event) => setSession((current) => ({ ...current, setupFiles: event.target.value ? [{ name: 'pasted-setup.txt', content: event.target.value }] : [] }))} />
-              ) : (
-                <label className="file-drop">
-                  <input type="file" multiple onChange={(event) => addFiles(event.target.files)} />
-                  <Icon name="plus" /><strong>Choose a ZIP or setup files</strong><span>Files are processed locally and never uploaded.</span>
-                </label>
-              )}
+              <div className="panel-heading"><div><span>01</span><div><h2>Setup input</h2><p>{trust === 'low' ? 'Paste or drop configuration files. Nothing is stored.' : 'Drop configuration files or choose a folder.'}</p></div></div><code>{session.setupFiles.length} files</code></div>
+              {trust === 'low' ? <textarea className="large-input" placeholder="Paste AGENTS.md, settings JSON, or agent instructions…" value={session.setupFiles.find((file) => file.name === 'pasted-setup.txt')?.content || ''} onChange={(event) => updatePastedSetup(event.target.value)} /> : null}
+              <label
+                className={`file-drop ${trust === 'low' ? 'file-drop-compact' : ''} ${dragActive ? 'drag-active' : ''}`}
+                onDragEnter={(event) => { event.preventDefault(); setDragActive(true) }}
+                onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; setDragActive(true) }}
+                onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragActive(false) }}
+                onDrop={dropSetupFiles}
+              >
+                <input type="file" multiple onChange={(event) => addFiles(event.target.files)} />
+                <Icon name="plus" /><strong>Drop setup files here, or choose files</strong><span>Supports individual files and ZIP archives. Everything is processed locally.</span>
+              </label>
               {trust !== 'low' ? <label className="secondary-button folder-input"><Icon name="folder" /> Choose folder<input type="file" multiple webkitdirectory="" onChange={(event) => addFiles(event.target.files)} /></label> : null}
-              {trust === 'high' ? <button className="secondary-button" type="button" onClick={pickDirectory}><Icon name="folder" /> Choose persistent folder</button> : null}
+              {trust === 'high' && highAvailable ? <button className="secondary-button" type="button" onClick={pickDirectory}><Icon name="folder" /> Choose persistent folder</button> : null}
               {session.setupFiles.length ? <div className="file-list">{session.setupFiles.slice(0, 4).map((file) => <span key={file.name}>{file.name}</span>)}{session.setupFiles.length > 4 ? <span>+{session.setupFiles.length - 4} more</span> : null}</div> : null}
             </section>
 
@@ -201,7 +264,7 @@ export default function App() {
                 <Metric label="Tokens" value={report.metrics.totalTokens.toLocaleString()} delta={baseline ? percent(report.metrics.totalTokens, baseline.metrics.totalTokens) : undefined} />
                 <Metric label="Duration" value={`${(report.metrics.durationMs / 1000).toFixed(2)}s`} delta={baseline ? percent(report.metrics.durationMs, baseline.metrics.durationMs) : undefined} />
                 <Metric label="Errors" value={report.metrics.errorCount} delta={baseline ? report.metrics.errorCount - baseline.metrics.errorCount : undefined} />
-                <Metric label="Closed" value={baseline ? Math.max(0, baseline.metrics.findingCount - report.metrics.findingCount) : '—'} />
+                <Metric label="Closed" value={baseline ? Math.max(0, baseline.metrics.findingCount - report.metrics.findingCount) : 'Not set'} />
               </div>
               <p className="cost-note">Estimated cost ${report.metrics.estimatedCostUsd.toFixed(6)} · reference rates {report.pricingTable.version}</p>
               <section className="fix-prompt"><div><span>04</span><h3>Prompt B · Fix</h3><button type="button" onClick={() => copy(promptB, 'b')}>{copied === 'b' ? 'Copied' : 'Copy'}</button></div><pre>{promptB}</pre></section>
