@@ -7,7 +7,7 @@ import { buildPromptA, buildPromptB, enrichAudit, inspectSetup } from './lib/aud
 import { downloadJson, sha256 } from './lib/deterministic'
 import { parseTelemetry } from './lib/parsers'
 
-const emptySession = { setupFiles: [], telemetry: '', parser: 'auto', baseline: null }
+const emptySession = { setupFiles: [], telemetry: '', parser: 'claude-code', baseline: null }
 const pipelineSteps = [
   { label: 'Your prompt', detail: 'Add instructions and configuration' },
   { label: 'Copy the probe', detail: 'Run a generated test in your agent' },
@@ -28,7 +28,6 @@ export default function App() {
   const [report, setReport] = useState(null)
   const [hash, setHash] = useState('')
   const [copied, setCopied] = useState('')
-  const [launchDir, setLaunchDir] = useState('')
   const [dragActive, setDragActive] = useState(false)
   const standaloneFile = location.protocol === 'file:'
   const directoryPickerSupported = typeof window.showDirectoryPicker === 'function'
@@ -218,7 +217,6 @@ export default function App() {
     })
   }
 
-  const logPath = launchDir ? `~/.claude/projects/${launchDir.replace(/[\\/.]/g, '-').replace(/^-+|-+$/g, '')}/` : 'Enter a launch directory to compute the log path.'
   const baseline = session.baseline
   const percent = (now, before) => before ? Math.round(((now - before) / before) * 100) : 0
 
@@ -263,6 +261,8 @@ export default function App() {
           {pipelineSteps.map((step, index) => <div className="pipeline-step" key={step.label}><span>0{index + 1}</span><div><b>{step.label}</b><small>{step.detail}</small></div></div>)}
         </div>
 
+        <p className="workbench-tie">One audit, in two halves - what you write on the left becomes the findings on the right.</p>
+
         <section className="workbench">
           <div className="input-column">
             <section className="panel ingest-panel">
@@ -306,17 +306,14 @@ export default function App() {
             </section>
 
             <section className="panel telemetry-panel">
-              <div className="panel-heading"><div><span>03</span><div><h2>Paste what came back</h2><p>Paste returned JSON or JSONL. Claude Code is normalized automatically. Anything else is best-effort.</p></div></div>
-                <select value={session.parser} onChange={(event) => setSession((current) => ({ ...current, parser: event.target.value }))}><option value="auto">Auto detect</option><option value="claude-code">Claude Code</option><option value="generic">Other (generic JSON or JSONL)</option></select>
-              </div>
+              <div className="panel-heading"><div><span>03</span><div><h2>Paste what came back</h2><p>Paste returned JSON or JSONL from a Claude Code session. Other formats are not yet supported - parked until we have seen real shapes.</p></div></div></div>
               <textarea className="large-input" placeholder='{"tools":["Read"],"errors":[],"metrics":{"durationMs":1240,"inputTokens":820,"outputTokens":210}}' value={session.telemetry} onChange={(event) => setSession((current) => ({ ...current, telemetry: event.target.value }))} />
-              {trust === 'low' ? <div className="path-helper"><input placeholder="Launch directory, e.g. ~/projects/my-project" value={launchDir} onChange={(event) => setLaunchDir(event.target.value)} /><code>{logPath}</code></div> : null}
               <button className="primary-button" type="button" onClick={runAudit}><Icon name="activity" /> Run deterministic audit</button>
             </section>
           </div>
 
           <aside className="report-column">
-            <section className="report-head"><div><p className="eyebrow">Diagnostic report</p><h2>{report ? `${criticalCount} critical ${criticalCount === 1 ? 'finding' : 'findings'}` : shownReport ? `${shownReport.findings.length} from the files alone` : hasMeaningfulInput ? 'Waiting for input' : 'Try the example below'}</h2></div>{hash ? <code title={hash}>SHA-256 · {hash.slice(0, 10)}</code> : null}</section>
+            <section className="report-head"><div><p className="eyebrow">Findings for your prompt</p><h2>{report ? `${criticalCount} critical ${criticalCount === 1 ? 'finding' : 'findings'}` : shownReport ? `${shownReport.findings.length} from the files alone` : hasMeaningfulInput ? 'Waiting for input' : 'Try the example below'}</h2></div>{hash ? <code title={hash}>SHA-256 · {hash.slice(0, 10)}</code> : null}</section>
             <Findings report={shownReport} showNudge={!shownReport && !hasMeaningfulInput} onUseExample={() => updatePastedSetup(EXAMPLE_PROMPT)} />
             {report ? <>
               <div className="metrics-grid">
