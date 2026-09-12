@@ -29,7 +29,7 @@ export const EMPTY_TELEMETRY = {
 // parser can never drift apart: both read this one object.
 export const PROBE_SCHEMA = {
   schemaVersion: TELEMETRY_SCHEMA_VERSION,
-  source: 'claude-code | opencode | other',
+  source: 'claude-code | other',
   tools: ['ToolName'],
   toolCounts: { ToolName: 0 },
   skillsFired: ['skill-name'],
