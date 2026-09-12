@@ -82,7 +82,7 @@ export function inspectSetup(files) {
 
   if (!ordered.length) {
     findings.push(finding('CFG-001', 'critical', 'No setup files loaded',
-      'Add an agent configuration, instructions file, or pasted setup before running the audit.'))
+      'Add a skill, agent, prompt, or pasted instructions before running the audit.'))
     return { files: [], declared: { tools: [], skills: [], agents: [], phases: [], declaresTaskTools: false }, findings }
   }
 
@@ -119,7 +119,7 @@ export function inspectSetup(files) {
 
       if (!description) {
         findings.push(finding(`CFG-013:${label}`, 'critical', 'No description in frontmatter',
-          `${label} has no \`description:\`. The runner must read the whole file to guess when to use it, which is the single most expensive avoidable cost in an agent setup.`))
+          `${label} has no \`description:\`. The runner must read the whole file to guess when to use it, which is the single most expensive avoidable cost in a prompt.`))
       } else {
         if (description.length > DESCRIPTION_CAP) {
           findings.push(finding(`CFG-014:${label}`, 'major', `Description is ${description.length} characters, cap is ${DESCRIPTION_CAP}`,

@@ -80,7 +80,7 @@ Now run a read-only probe of your own session and return the result.
 You are being asked to report on yourself. This is a read-only probe: do not edit, create,
 move, or delete any file, and do not run anything that changes state.
 
-Gather the following about the session or sessions that ran this agent setup, then return JSON and
+Gather the following about the session or sessions that ran this prompt, then return JSON and
 nothing else.
 
 1. Every tool actually invoked, with a call count for each.
@@ -155,7 +155,7 @@ export function buildPromptB(report) {
   const dirty = report.actual?.environment?.gitDirty === true
   const branch = report.actual?.environment?.gitWorktree
 
-  return `Fix the agent-setup findings below. Before you change anything, follow this gate.
+  return `Fix the prompt findings below. Before you change anything, follow this gate.
 
 ## Step 1. Ask, do not assume
 

@@ -66,7 +66,7 @@ exit 0
 # Second gate: the auditor itself (T-12d).
 #
 # The disclosure gate above asks "is this safe to publish". This asks "is this
-# agent setup any good". Static checks only, so it costs milliseconds, and it
+# prompt any good". Static checks only, so it costs milliseconds, and it
 # only looks at staged agent files, so most commits skip it entirely.
 #
 # Disabled by default, per decision D-24: the hook is the highest-trust thing we
