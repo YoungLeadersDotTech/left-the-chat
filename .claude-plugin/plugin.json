@@ -6,6 +6,6 @@
   },
   "version": "0.1.0",
   "skills": [
-    "./skills/audit-agent-setup/SKILL.md"
+    "./skills/audit-agent-setup"
   ]
 }
