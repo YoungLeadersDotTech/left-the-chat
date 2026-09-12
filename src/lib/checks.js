@@ -182,7 +182,12 @@ export function inspectSetup(files) {
 
   const combined = ordered.map((file) => `--- ${file.name}\n${file.content}`).join('\n')
 
-  if (!tools.size) {
+  // A pasted prompt is not an agent configuration, so config-shaped advice is noise on it.
+  // Only complain about a missing allowlist when something here actually looks like agent config.
+  const looksLikeConfig = ordered.some((file) => isSkillFile(file.name) || isAgentFile(file.name)
+    || /(^|\/)(AGENTS?|CLAUDE)\.md$/i.test(file.name))
+
+  if (!tools.size && looksLikeConfig) {
     findings.push(finding('CFG-002', 'critical', 'Tool permissions are implicit',
       'Nothing declares an explicit tool allowlist, so there is no declared surface to compare runtime access against. This is the check that makes every runtime finding below possible, which is why it is critical rather than advisory.'))
   }
@@ -212,10 +217,13 @@ export function inspectSetup(files) {
       'A long instruction file with no code block or literal example leaves every concrete decision to inference.', 'prose'))
   }
 
+  findings.push(...inspectPromptText(combined, combinedLength))
+
   findings.sort((a, b) => severityRank(a.severity) - severityRank(b.severity) || a.id.localeCompare(b.id))
 
   return {
     files: ordered.map((file) => file.name),
+    sources: ordered,
     declared: {
       tools: [...tools].sort(),
       skills: [...skills].sort(),
@@ -294,6 +302,72 @@ export function compareDeclaredWithActual(declared, telemetry) {
   telemetry.errors.forEach((error, index) => {
     findings.push(finding(`RUN-ERROR-${String(index).padStart(3, '0')}`, 'critical', 'Unhandled runtime error', error, 'runtime'))
   })
+
+  return findings
+}
+
+// Vague quantifiers. Each one is a decision the author declined to make, handed to the model to
+// guess at, differently every run. They are the single largest source of non-determinism in a
+// prompt that is otherwise fine.
+const HEDGES = [
+  'appropriate', 'as needed', 'as necessary', 'if needed', 'where relevant', 'thorough',
+  'properly', 'correctly', 'reasonable', 'sensible', 'best practice', 'make sure to',
+  'etc.', 'and so on', 'as appropriate', 'suitable', 'good quality', 'high quality'
+]
+
+const FILLER = ['please', 'thank you', 'thanks', 'kindly', 'I would like you to', 'I want you to', 'could you']
+
+/**
+ * Checks that work on prose. These run on anything: a pasted prompt, a slash command, a skill
+ * body, an AGENTS.md. The static checks above need frontmatter to say much; these do not, which
+ * matters because the most common thing anyone drops in is a bare prompt.
+ */
+export function inspectPromptText(text, length) {
+  const findings = []
+  if (!text || length < 40) return findings
+
+  const hits = HEDGES.filter((word) => new RegExp(`\\b${word.replace('.', '\\.')}`, 'i').test(text))
+  if (hits.length) {
+    findings.push(finding('PROMPT-001', 'major', `${hits.length} vague instruction${hits.length === 1 ? '' : 's'}: ${hits.slice(0, 4).join(', ')}${hits.length > 4 ? '...' : ''}`,
+      'Each of these is a decision you declined to make, handed to the model to guess at, and it will guess differently on different runs. They are the biggest single source of drift in an otherwise sound prompt. Say what "appropriate" means here.', 'prompt'))
+  }
+
+  if (!/(json|yaml|markdown|bullet|table|csv|xml|schema|format|one line per|return exactly|respond with)/i.test(text)) {
+    findings.push(finding('PROMPT-002', 'major', 'No output format specified',
+      'Nothing says what shape the answer should take, so the model picks one and picks differently next time. If anything downstream parses this output, that is a bug waiting for a quiet day.', 'prompt'))
+  }
+
+  if (!/(```|e\.g\.|for example|such as|input:|output:|example)/i.test(text)) {
+    findings.push(finding('PROMPT-003', 'minor', 'No example given',
+      'One worked example resolves more ambiguity than several paragraphs of description, and costs fewer tokens than the retries it prevents.', 'prompt'))
+  }
+
+  if (!/\b(do not|don't|never|avoid|except|unless|without|must not)\b/i.test(text)) {
+    findings.push(finding('PROMPT-004', 'major', 'No constraints, only instructions',
+      'The prompt says what to do and never what not to do. Scope creep in a model response is nearly always an unstated boundary rather than a misread instruction.', 'prompt'))
+  }
+
+  if (!/(you are|your role|act as|as an? [a-z]+ (engineer|expert|assistant|reviewer|analyst|writer))/i.test(text)) {
+    findings.push(finding('PROMPT-005', 'minor', 'No role or context set',
+      'Nothing establishes who the model is meant to be or what it is looking at, so it infers both from the task and the inference shifts between runs.', 'prompt'))
+  }
+
+  if (!/(success|done when|complete when|acceptance|criteria|verify|check that|should result|expected)/i.test(text)) {
+    findings.push(finding('PROMPT-006', 'minor', 'No definition of done',
+      'Nothing states what a finished, correct answer looks like, so neither the model nor you can tell whether the run succeeded.', 'prompt'))
+  }
+
+  const filler = FILLER.filter((word) => new RegExp(`\\b${word}\\b`, 'i').test(text))
+  if (filler.length >= 2) {
+    findings.push(finding('PROMPT-007', 'minor', `Politeness filler: ${filler.slice(0, 3).join(', ')}`,
+      'Harmless in a short prompt. In a skill that fires hundreds of times a day it is tokens you pay for on every single invocation and it changes nothing about the output.', 'prompt'))
+  }
+
+  const steps = (text.match(/^\s*(?:\d+[.)]|[-*])\s+/gm) || []).length
+  if (length > 1200 && steps < 3) {
+    findings.push(finding('PROMPT-008', 'major', `${length.toLocaleString()} characters with almost no structure`,
+      'A long unstructured prompt gets read unevenly: instructions in the middle are followed least reliably. Break it into numbered steps so each one is separately checkable.', 'prompt'))
+  }
 
   return findings
 }
