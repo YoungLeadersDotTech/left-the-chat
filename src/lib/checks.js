@@ -217,7 +217,9 @@ export function inspectSetup(files) {
       'A long instruction file with no code block or literal example leaves every concrete decision to inference.', 'prose'))
   }
 
+  findings.push(...inspectPromptRisk(combined, combinedLength))
   findings.push(...inspectPromptText(combined, combinedLength))
+  findings.push(...inspectPromptStructure(combined, combinedLength))
 
   findings.sort((a, b) => severityRank(a.severity) - severityRank(b.severity) || a.id.localeCompare(b.id))
 
@@ -322,6 +324,74 @@ const FILLER = ['please', 'thank you', 'thanks', 'kindly', 'I would like you to'
  * body, an AGENTS.md. The static checks above need frontmatter to say much; these do not, which
  * matters because the most common thing anyone drops in is a bare prompt.
  */
+// T-36/D-54: every real prompt reported zero critical findings, so the first number a visitor read
+// always said nothing was wrong. The fix is not to promote a major. It is to name what genuinely is
+// critical in a prompt: handing an agent a broad reach over your machine, or an action that leaves
+// the machine, while stating no gate anywhere. That combination is the one that costs money or data
+// rather than tokens.
+const REACH = [
+  'anything on my computer', 'anything on my machine', 'all my files', 'my whole disk',
+  'my home directory', 'my emails', 'my inbox', 'my calendar', 'my documents', 'my downloads',
+  'the whole codebase', 'every file', 'all the files', 'whatever you can find', 'my drive'
+]
+const OUTWARD = [
+  'delete', 'remove', 'rm -rf', 'drop table', 'overwrite', 'push', 'deploy', 'publish',
+  'send', 'email', 'post it', 'merge', 'commit', 'charge', 'refund', 'transfer', 'pay'
+]
+const GATES = [
+  'ask me', 'ask first', 'confirm', 'check with me', 'my approval', 'permission', 'dry run',
+  'dry-run', 'preview', 'before you', 'do not', "don't", 'never', 'unless', 'stop and'
+]
+
+// Structure, asked for directly at 15:12: "there's no markdown headers, there's no paragraphs,
+// there's no bullets split up. Should we just add those as checkers?" Gated at 400 characters,
+// because none of it is a defect in three sentences.
+const STRUCTURE_FLOOR = 400
+
+export function inspectPromptStructure(text, length) {
+  const findings = []
+  if (!text || length < STRUCTURE_FLOOR) return findings
+
+  if (!/^\s{0,3}#{1,6}\s+\S/m.test(text)) {
+    findings.push(finding('PROMPT-010', 'minor', 'No headings',
+      'Nothing divides the prompt into named parts, so there is no way to point at one section and say that bit is wrong. Headings cost nothing and make a prompt reviewable.', 'prompt'))
+  }
+
+  if (!/\n\s*\n/.test(text.trim())) {
+    findings.push(finding('PROMPT-011', 'major', 'One unbroken wall of text',
+      'There is not a single paragraph break in the whole prompt. Attention falls off in the middle of a block, so the instructions buried there are the ones most likely to be skipped, and you will never be able to tell which they were.', 'prompt'))
+  }
+
+  if (!/^\s*(?:\d+[.)]|[-*+])\s+\S/m.test(text)) {
+    findings.push(finding('PROMPT-012', 'minor', 'No bullets or numbered steps',
+      'Prose hides how many separate things you asked for. A list makes the count obvious to you and the order obvious to the model.', 'prompt'))
+  }
+
+  return findings
+}
+
+export function inspectPromptRisk(text, length) {
+  if (!text || length < 40) return []
+
+  const reach = REACH.filter((phrase) => text.toLowerCase().includes(phrase))
+  const outward = OUTWARD.filter((verb) => new RegExp(`\\b${verb.replace(' ', '\\s+')}`, 'i').test(text))
+  if (!reach.length && !outward.length) return []
+
+  const gated = GATES.some((phrase) => text.toLowerCase().includes(phrase))
+  if (gated) return []
+
+  const what = reach.length
+    ? `broad reach over your machine (${reach.slice(0, 2).join(', ')})`
+    : `an action that leaves this machine (${outward.slice(0, 3).join(', ')})`
+
+  const title = reach.length
+    ? `Unbounded access to your machine, with no gate: "${reach[0]}"`
+    : `Irreversible action with no gate: ${outward.slice(0, 2).join(', ')}`
+
+  return [finding('PROMPT-009', 'critical', title,
+    `This prompt grants ${what} and never once tells the model to ask, confirm, preview, or stop. Every other finding here costs you tokens or a re-run. This one is the class that costs you data or money, and it is the only one where being wrong is not recoverable by running it again. Add the gate: say what it must ask about before doing it.`, 'prompt')]
+}
+
 export function inspectPromptText(text, length) {
   const findings = []
   if (!text || length < 40) return findings
