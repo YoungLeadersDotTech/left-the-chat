@@ -10,8 +10,17 @@ export function severityRank(severity) {
   return severity in SEVERITY_ORDER ? SEVERITY_ORDER[severity] : 99
 }
 
-export function finding(id, severity, title, detail, source = 'configuration') {
-  return { id, severity, title, detail, source }
+export function finding(id, severity, title, detail, source = 'configuration', line) {
+  return line ? { id, severity, title, detail, source, line } : { id, severity, title, detail, source }
+}
+
+// A finding you cannot locate is a finding you will not act on. Returns the 1-based line of the
+// first match, or undefined when there is nothing concrete to point at.
+export function lineOf(content, needle) {
+  if (!content || needle === undefined || needle === null) return undefined
+  const index = typeof needle === 'string' ? content.indexOf(needle) : content.search(needle)
+  if (index < 0) return undefined
+  return content.slice(0, index).split('\n').length
 }
 
 // Anthropic's published cap on a skill or agent description.
@@ -30,6 +39,16 @@ const CONTACT_PATTERNS = [
   [/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/, 'an email address'],
   [/\b\+?\d[\d\s().-]{8,}\d\b/, 'something shaped like a phone number']
 ]
+
+// A loose phone shape also matches an ISO date, so `2026-11-03` was reporting a major privacy
+// finding, and any file with a few dates in it looked like it was leaking someone's number.
+// Dates are stripped before contact matching rather than the pattern being narrowed, because the
+// pattern is deliberately loose - international numbers are not worth enumerating.
+const DATE_LIKE = /\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b\d{4}-\d{2}\b/g
+
+function withoutDates(text) {
+  return (text || '').replace(DATE_LIKE, ' ')
+}
 
 function parseFrontmatter(content) {
   const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)
@@ -199,49 +218,60 @@ export function inspectSetup(files) {
         'Reference points at a file that is not here',
         singleFile
           ? `${label} references \`${ref}\`, and only one file was loaded, so this cannot be checked from here. Switch to Medium trust and drop the whole folder in, and every reference gets verified instead of assumed.`
-          : `${label} references \`${ref}\`, which is not among the files loaded. Either it was not included in the drop, or the reference is dead and the runner will burn a tool call discovering that.`))
+          : `${label} references \`${ref}\`, which is not among the files loaded. Either it was not included in the drop, or the reference is dead and the runner will burn a tool call discovering that.`,
+        'configuration', lineOf(content, ref)))
     }
 
     for (const [pattern, what] of CREDENTIAL_PATTERNS) {
-      if (pattern.test(content)) {
+      const credHit = content.match(pattern)
+      if (credHit) {
         findings.push(finding(`SEC-001:${label}`, 'critical', 'Something shaped like a credential is in the file',
-          `${label} contains ${what}. Rotate it. Agent instruction files get committed, shared, and pasted into chats far more casually than code does.`))
+          `${label} contains ${what}. Rotate it. Agent instruction files get committed, shared, and pasted into chats far more casually than code does.`,
+          'configuration', lineOf(content, credHit[0])))
         break
       }
     }
+    const datelessContent = withoutDates(content)
     for (const [pattern, what] of CONTACT_PATTERNS) {
-      if (pattern.test(content)) {
+      const hit = datelessContent.match(pattern)
+      if (hit) {
         findings.push(finding(`PII-001:${label}`, 'major', 'Personal contact detail in the file',
-          `${label} contains ${what}. Instruction files travel further than the people in them expect.`, 'privacy'))
+          `${label} contains ${what}. Instruction files travel further than the people in them expect.`, 'privacy',
+          lineOf(content, hit[0].trim())))
         break
       }
     }
 
     if (/(^|[^~\w])\/(Users|home)\/[A-Za-z0-9._-]+\//.test(content)) {
       findings.push(finding(`CFG-017:${label}`, 'major', 'Hard-coded home directory',
-        `${label} contains an absolute path under a named home directory. It will not resolve on anyone else's machine. Use \`~/\`.`))
+        `${label} contains an absolute path under a named home directory. It will not resolve on anyone else's machine. Use \`~/\`.`,
+        'configuration', lineOf(content, /(^|[^~\w])\/(Users|home)\/[A-Za-z0-9._-]+\//)))
     }
 
     const duplicateKeys = findDuplicateFrontmatterKeys(content)
     if (duplicateKeys.length) {
       findings.push(finding(`CFG-020:${label}`, 'major', `Duplicate frontmatter key: ${duplicateKeys.join(', ')}`,
-        `${label} declares ${duplicateKeys.join(', ')} more than once at the top level. Only the first value is read here; a stray copy-pasted second line silently overrides nothing it looks like it should.`))
+        `${label} declares ${duplicateKeys.join(', ')} more than once at the top level. Only the first value is read here; a stray copy-pasted second line silently overrides nothing it looks like it should.`,
+        'configuration', lineOf(content, `${duplicateKeys[0]}:`)))
     }
 
     if (hasDoubledHorizontalRule(body)) {
       findings.push(finding(`STYLE-004:${label}`, 'minor', 'Doubled horizontal rule',
-        `${label} has two \`---\` divider lines with only a blank line between them. Usually a copy-paste artifact where one divider was meant to replace the other.`, 'prose'))
+        `${label} has two \`---\` divider lines with only a blank line between them. Usually a copy-paste artifact where one divider was meant to replace the other.`, 'prose',
+        lineOf(content, /^-{3,}\s*\n\s*\n-{3,}\s*$/m)))
     }
 
     const duplicatedLeadIn = findDuplicatedLeadIn(body)
     if (duplicatedLeadIn) {
       findings.push(finding(`STYLE-005:${label}`, 'minor', `Duplicated lead-in phrase: "${duplicatedLeadIn}"`,
-        `${label} has a bold label immediately repeated as plain text, e.g. \`**${duplicatedLeadIn}**: ${duplicatedLeadIn}: ...\`. Reads as a copy-paste artifact.`, 'prose'))
+        `${label} has a bold label immediately repeated as plain text, e.g. \`**${duplicatedLeadIn}**: ${duplicatedLeadIn}: ...\`. Reads as a copy-paste artifact.`, 'prose',
+        lineOf(content, `**${duplicatedLeadIn}**`)))
     }
 
     if (hasUnclosedFence(body)) {
       findings.push(finding(`STYLE-006:${label}`, 'minor', 'Unclosed code fence',
-        `${label} has an odd number of \`\`\` fence markers, so something after the last one is still inside an open fence - everything from there on renders and is read as code, including any real instructions.`, 'prose'))
+        `${label} has an odd number of \`\`\` fence markers, so something after the last one is still inside an open fence - everything from there on renders and is read as code, including any real instructions.`, 'prose',
+        lineOf(content, content.slice(content.lastIndexOf('```')))))
     }
 
     for (const match of body.matchAll(/^#{2,3}\s*(?:Phase|Step)\s+([0-9]+[a-z]?)\b[:.\s-]*(.*)$/gim)) {
@@ -286,8 +316,10 @@ export function inspectSetup(files) {
       'A long instruction file with no code block or literal example leaves every concrete decision to inference.', 'prose'))
   }
 
+  findings.push(...inspectPromptRisk(combined, combinedLength))
   findings.push(...inspectOptionalStyle(combined))
   findings.push(...inspectPromptText(combined, combinedLength))
+  findings.push(...inspectPromptStructure(combined, combinedLength))
 
   findings.sort((a, b) => severityRank(a.severity) - severityRank(b.severity) || a.id.localeCompare(b.id))
 
@@ -433,6 +465,76 @@ export function inspectOptionalStyle(text) {
  * body, an AGENTS.md. The static checks above need frontmatter to say much; these do not, which
  * matters because the most common thing anyone drops in is a bare prompt.
  */
+// T-36/D-54: every real prompt reported zero critical findings, so the first number a visitor read
+// always said nothing was wrong. The fix is not to promote a major. It is to name what genuinely is
+// critical in a prompt: handing an agent a broad reach over your machine, or an action that leaves
+// the machine, while stating no gate anywhere. That combination is the one that costs money or data
+// rather than tokens.
+const REACH = [
+  'anything on my computer', 'anything on my machine', 'all my files', 'my whole disk',
+  'my home directory', 'my emails', 'my inbox', 'my calendar', 'my documents', 'my downloads',
+  'the whole codebase', 'every file', 'all the files', 'whatever you can find', 'my drive'
+]
+const OUTWARD = [
+  'delete', 'remove', 'rm -rf', 'drop table', 'overwrite', 'push', 'deploy', 'publish',
+  'send', 'email', 'post it', 'merge', 'commit', 'charge', 'refund', 'transfer', 'pay'
+]
+const GATES = [
+  'ask me', 'ask first', 'confirm', 'check with me', 'my approval', 'permission', 'dry run',
+  'dry-run', 'preview', 'before you', 'do not', "don't", 'never', 'unless', 'stop and'
+]
+
+// Structure, asked for directly at 15:12: "there's no markdown headers, there's no paragraphs,
+// there's no bullets split up. Should we just add those as checkers?" Gated at 400 characters,
+// because none of it is a defect in three sentences.
+const STRUCTURE_FLOOR = 400
+
+export function inspectPromptStructure(text, length) {
+  const findings = []
+  if (!text || length < STRUCTURE_FLOOR) return findings
+
+  if (!/^\s{0,3}#{1,6}\s+\S/m.test(text)) {
+    findings.push(finding('PROMPT-010', 'minor', 'No headings',
+      'Nothing divides the prompt into named parts, so there is no way to point at one section and say that bit is wrong. Headings cost nothing and make a prompt reviewable.', 'prompt'))
+  }
+
+  if (!/\n\s*\n/.test(text.trim())) {
+    findings.push(finding('PROMPT-011', 'major', 'One unbroken wall of text',
+      'There is not a single paragraph break in the whole prompt. Attention falls off in the middle of a block, so the instructions buried there are the ones most likely to be skipped, and you will never be able to tell which they were.', 'prompt'))
+  }
+
+  if (!/^\s*(?:\d+[.)]|[-*+])\s+\S/m.test(text)) {
+    findings.push(finding('PROMPT-012', 'minor', 'No bullets or numbered steps',
+      'Prose hides how many separate things you asked for. A list makes the count obvious to you and the order obvious to the model.', 'prompt'))
+  }
+
+  return findings
+}
+
+export function inspectPromptRisk(text, length) {
+  if (!text || length < 40) return []
+
+  const reach = REACH.filter((phrase) => text.toLowerCase().includes(phrase))
+  const outward = OUTWARD.filter((verb) => new RegExp(`\\b${verb.replace(' ', '\\s+')}`, 'i').test(text))
+  if (!reach.length && !outward.length) return []
+
+  const gated = GATES.some((phrase) => text.toLowerCase().includes(phrase))
+  if (gated) return []
+
+  const what = reach.length
+    ? `broad reach over your machine (${reach.slice(0, 2).join(', ')})`
+    : `an action that leaves this machine (${outward.slice(0, 3).join(', ')})`
+
+  const title = reach.length
+    ? `Unbounded access to your machine, with no gate: "${reach[0]}"`
+    : `Irreversible action with no gate: ${outward.slice(0, 2).join(', ')}`
+
+  const anchor = reach.length ? reach[0] : outward[0]
+  return [finding('PROMPT-009', 'critical', title,
+    `This prompt grants ${what} and never once tells the model to ask, confirm, preview, or stop. Every other finding here costs you tokens or a re-run. This one is the class that costs you data or money, and it is the only one where being wrong is not recoverable by running it again. Add the gate: say what it must ask about before doing it.`, 'prompt',
+    lineOf(text, new RegExp(anchor.replace(' ', '\\s+'), 'i')))]
+}
+
 export function inspectPromptText(text, length) {
   const findings = []
   if (!text || length < 40) return findings
@@ -440,10 +542,11 @@ export function inspectPromptText(text, length) {
   const hits = HEDGES.filter((word) => new RegExp(`\\b${word.replace('.', '\\.')}`, 'i').test(text))
   if (hits.length) {
     findings.push(finding('PROMPT-001', 'major', `${hits.length} vague instruction${hits.length === 1 ? '' : 's'}: ${hits.slice(0, 4).join(', ')}${hits.length > 4 ? '...' : ''}`,
-      'Each of these is a decision you declined to make, handed to the model to guess at, and it will guess differently on different runs. They are the biggest single source of drift in an otherwise sound prompt. Say what "appropriate" means here.', 'prompt'))
+      'Each of these is a decision you declined to make, handed to the model to guess at, and it will guess differently on different runs. They are the biggest single source of drift in an otherwise sound prompt. Say what "appropriate" means here.', 'prompt',
+      lineOf(text, new RegExp(hits[0].replace('.', '\\.'), 'i'))))
   }
 
-  if (!/(json|yaml|markdown|bullet|table|csv|xml|schema|format|one line per|return exactly|respond with)/i.test(text)) {
+  if (!/\b(json|yaml|markdown|bullet|table|csv|xml|schema|format|one line per|return exactly|respond with)/i.test(text)) {
     findings.push(finding('PROMPT-002', 'major', 'No output format specified',
       'Nothing says what shape the answer should take, so the model picks one and picks differently next time. If anything downstream parses this output, that is a bug waiting for a quiet day.', 'prompt'))
   }
@@ -471,7 +574,8 @@ export function inspectPromptText(text, length) {
   const filler = FILLER.filter((word) => new RegExp(`\\b${word}\\b`, 'i').test(text))
   if (filler.length >= 2) {
     findings.push(finding('PROMPT-007', 'minor', `Politeness filler: ${filler.slice(0, 3).join(', ')}`,
-      'Harmless in a short prompt. In a skill that fires hundreds of times a day it is tokens you pay for on every single invocation and it changes nothing about the output.', 'prompt'))
+      'Harmless in a short prompt. In a skill that fires hundreds of times a day it is tokens you pay for on every single invocation and it changes nothing about the output.', 'prompt',
+      lineOf(text, new RegExp(filler[0], 'i'))))
   }
 
   const steps = (text.match(/^\s*(?:\d+[.)]|[-*])\s+/gm) || []).length

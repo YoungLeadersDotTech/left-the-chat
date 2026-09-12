@@ -113,6 +113,44 @@ export function parseClaudeCodeLog(raw) { return normalize(parseRecords(raw), 'c
 // it is renamed to say what it actually does.
 export function parseGenericLog(raw) { return normalize(parseRecords(raw), 'generic') }
 
+// T-47: people paste the agent's whole reply, not a bare object. Claude answers with a sentence,
+// a fenced block, and often a summary underneath. The old code called JSON.parse on the entire
+// paste, failed, and fell through to the log walker, which found almost nothing and said so
+// quietly - the worst possible failure for a step whose whole job is "paste what came back".
+// Reported by John at 15:16 doing exactly that.
+//
+// Scan for the first balanced JSON object that carries a schemaVersion, in document order, and
+// use it. Document order keeps this deterministic: the same paste always yields the same object.
+export function extractProbeObject(text) {
+  const source = text || ''
+  for (let i = 0; i < source.length; i += 1) {
+    if (source[i] !== '{') continue
+    let depth = 0
+    let inString = false
+    let escaped = false
+    for (let j = i; j < source.length; j += 1) {
+      const ch = source[j]
+      if (escaped) { escaped = false; continue }
+      if (ch === '\\' && inString) { escaped = true; continue }
+      if (ch === '"') { inString = !inString; continue }
+      if (inString) continue
+      if (ch === '{') depth += 1
+      else if (ch === '}') {
+        depth -= 1
+        if (depth === 0) {
+          const candidate = source.slice(i, j + 1)
+          try {
+            const parsed = JSON.parse(candidate)
+            if (parsed && !Array.isArray(parsed) && parsed.schemaVersion !== undefined) return parsed
+          } catch { /* not valid JSON, keep scanning from the next brace */ }
+          break
+        }
+      }
+    }
+  }
+  return null
+}
+
 export function parseTelemetry(raw, strategy = 'auto') {
   const trimmed = (raw || '').trim()
   if (!trimmed) return { ...EMPTY_TELEMETRY }
@@ -122,7 +160,10 @@ export function parseTelemetry(raw, strategy = 'auto') {
   try {
     const direct = JSON.parse(trimmed)
     if (direct && !Array.isArray(direct) && direct.schemaVersion !== undefined) return coerceTelemetry(direct)
-  } catch { /* not a single probe object, fall through to log parsing */ }
+  } catch { /* not a single probe object, try to find one inside the paste */ }
+
+  const embedded = extractProbeObject(trimmed)
+  if (embedded) return coerceTelemetry(embedded)
 
   if (strategy === 'claude-code') return parseClaudeCodeLog(trimmed)
   if (strategy === 'generic') return parseGenericLog(trimmed)
