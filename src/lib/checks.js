@@ -332,7 +332,7 @@ export function inspectPromptText(text, length) {
       'Each of these is a decision you declined to make, handed to the model to guess at, and it will guess differently on different runs. They are the biggest single source of drift in an otherwise sound prompt. Say what "appropriate" means here.', 'prompt'))
   }
 
-  if (!/(json|yaml|markdown|bullet|table|csv|xml|schema|format|one line per|return exactly|respond with)/i.test(text)) {
+  if (!/\b(json|yaml|markdown|bullet|table|csv|xml|schema|format|one line per|return exactly|respond with)/i.test(text)) {
     findings.push(finding('PROMPT-002', 'major', 'No output format specified',
       'Nothing says what shape the answer should take, so the model picks one and picks differently next time. If anything downstream parses this output, that is a bug waiting for a quiet day.', 'prompt'))
   }
