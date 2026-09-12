@@ -370,6 +370,28 @@ export function compareDeclaredWithActual(declared, telemetry) {
   const dispatched = new Set(telemetry.agentsDispatched)
   const used = new Set(telemetry.tools)
 
+  // Observed at 14:14 running the real loop on a pasted prompt: the probe faithfully reported the
+  // session it ran in, which was the session doing the auditing, not a run of the audited prompt.
+  // The prompt had never been executed at all. So the page showed 528,354 tokens and 32 seconds
+  // as though that were the prompt's cost, and the declared-versus-actual family produced nothing
+  // because a bare prompt declares no tools to compare against.
+  //
+  // The agent itself caught this and said so. The tool should say it first. A number presented in
+  // the wrong frame is worse than no number, and this product's entire claim is that it shows you
+  // what actually happened rather than what you assumed.
+  // Counted shape-agnostically on purpose. The declared surface is a Set inside inspectSetup and an
+  // Array by the time it reaches here, and a first cut of this guard tested `.size` on the Array,
+  // where it is undefined - so the finding fired on every input including ones with a real declared
+  // surface. Caught by running it on both shapes. Precisely the defect class this tool sells itself
+  // on finding, which is a reason to own it in a comment rather than quietly fix it.
+  const count = (value) => value ? (value.size ?? value.length ?? 0) : 0
+  const declaresNothing = !count(declared.tools) && !count(declared.skills) && !count(declared.agents)
+    && !declared.declaresTaskTools
+  if (declaresNothing) {
+    findings.push(finding('RUN-UNATTRIBUTED', 'major', 'These numbers are not this prompt\'s numbers',
+      'The telemetry describes the session you ran the probe in. A pasted prompt declares no tools, skills or agents, so there is nothing to compare a run against, and the tokens and duration above are the cost of auditing, not the cost of running this prompt. To measure the prompt, run it in a fresh session first, then probe that session. To get the declared-versus-actual family at all, load the skill or agent that declares a surface.', 'runtime'))
+  }
+
   for (const tool of declared.tools) {
     if (!used.has(tool)) {
       findings.push(finding(`RUN-TOOL-UNUSED:${tool}`, 'major', `Tool granted but never used: ${tool}`,
