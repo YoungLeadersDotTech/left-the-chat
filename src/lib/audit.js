@@ -81,8 +81,9 @@ nothing else.
    working tree is dirty.
 
 Where to look: Claude Code writes session logs under \`~/.claude/projects/<slugified-path>/\`,
-where the slug is the launch directory with \`/\` and \`.\` replaced by \`-\`. OpenCode writes under its
-own session directory.
+where the slug is the launch directory with \`/\` and \`.\` replaced by \`-\`. Most other agents,
+OpenCode included, do not expose a text session log to read - if that is you, skip straight to the
+fallback below.
 
 **If you cannot find a session log, do not give up and do not guess.** Answer from what you can
 observe in this session, set anything you genuinely cannot determine to null, and then do one more

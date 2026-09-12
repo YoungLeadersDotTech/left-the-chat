@@ -44,6 +44,7 @@ h1 span { color: var(--fg-muted); }
 .selected .trust-dot { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .trust-track b, .trust-track small { display: block; }
 .trust-track b { font-size: 12px; font-weight: 600; }
+.trust-note { clear: both; margin: 12px 0 0; color: var(--fg-muted); font-size: 11px; line-height: 1.5; }
 .trust-track small { margin-top: 2px; color: var(--fg-subtle); font-size: 9px; }
 .trust-guide { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: -20px 0 34px; }
 .trust-guide article { padding: 15px 16px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--surface-1) 70%, transparent); }
@@ -63,6 +64,8 @@ h1 span { color: var(--fg-muted); }
 .local-setup button { padding: 5px 7px; color: var(--caution); border: 1px solid color-mix(in srgb, var(--caution) 35%, transparent); border-radius: 6px; background: transparent; cursor: pointer; font-size: 9px; }
 .local-setup .install-note { grid-column: 1 / -1; padding: 0 2px; }
 .install-note a { color: var(--caution); text-underline-offset: 2px; }
+.local-setup .install-note-easiest { grid-column: 1 / -1; margin: 0 0 4px; padding: 10px 12px; color: var(--fg); border: 1px solid color-mix(in srgb, var(--positive) 35%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--positive) 9%, var(--surface-2)); font-size: 11px; }
+.install-note-easiest a { color: var(--positive); text-underline-offset: 2px; }
 .local-mode-ready { display: flex; align-items: center; gap: 11px; margin: -20px 0 34px; padding: 12px 15px; border: 1px solid color-mix(in srgb, var(--positive) 30%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--positive) 7%, var(--surface-1)); }
 .local-mode-ready > span { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--positive); box-shadow: 0 0 0 4px color-mix(in srgb, var(--positive) 15%, transparent); }
 .local-mode-ready strong { font-size: 11px; }
