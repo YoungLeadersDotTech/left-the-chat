@@ -112,6 +112,39 @@ export default function App() {
     setSession((current) => ({ ...current, setupFiles: files.sort((a, b) => a.name.localeCompare(b.name)) }))
   }
 
+  // D-23: a trust downgrade must not silently discard state. Confirm first, name
+  // what is lost, offer the export on the step where the data can still be saved
+  // (High -> Medium can hold a session file; Low cannot). Clear localStorage on
+  // the way out of High regardless of destination, so High -> Medium -> refresh
+  // does not silently restore data Medium claims not to persist.
+  const TRUST_RANK = { low: 0, medium: 1, high: 2 }
+
+  function changeTrust(next) {
+    const isDowngrade = TRUST_RANK[next] < TRUST_RANK[trust]
+    const hasState = session.setupFiles.length > 0 || report !== null
+
+    if (isDowngrade && trust === 'high' && hasState) {
+      const wantsExport = window.confirm(
+        `Leaving High trust stops saving your session in this browser (${session.setupFiles.length} file(s)` +
+        `${report ? ', the current report' : ''}). Export it as a file first?`
+      )
+      if (wantsExport) downloadJson('left-the-chat-session.json', { ...session, report, hash })
+    }
+
+    if (next === 'low' && isDowngrade && hasState) {
+      const proceed = window.confirm(
+        `Switching to Low trust clears ${session.setupFiles.length} file(s)` +
+        `${report ? ' and the current report' : ''} from memory. Continue?`
+      )
+      if (!proceed) return
+    }
+
+    if (trust === 'high' && next !== 'high') localStorage.removeItem('left-the-chat-session')
+
+    setTrust(next)
+    if (next === 'low') { setSession(emptySession); setReport(null); setHash('') }
+  }
+
   async function copy(value, id) {
     if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value)
     else {
@@ -155,7 +188,7 @@ export default function App() {
           <p>Inspect agent configuration, compare declared access with real runtime behavior, and generate a reproducible fix prompt—all inside your browser.</p>
         </section>
 
-        <TrustSlider value={trust} onChange={(level) => { setTrust(level); if (level === 'low') { setSession(emptySession); setReport(null); setHash('') } }} highAvailable={highAvailable} />
+        <TrustSlider value={trust} onChange={changeTrust} highAvailable={highAvailable} />
 
         <div className="pipeline-nav" aria-label="Audit pipeline">
           {['Setup', 'Probe', 'Telemetry', 'Fix & compare'].map((label, index) => <div key={label}><span>0{index + 1}</span><b>{label}</b></div>)}

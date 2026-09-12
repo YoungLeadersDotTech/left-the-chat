@@ -35,12 +35,13 @@ export function TrustSlider({ value, onChange, highAvailable }) {
           return (
             <button className={`${value === level.id ? 'selected' : ''} ${disabled ? 'disabled' : ''}`} key={level.id} type="button" tabIndex="-1" disabled={disabled} onClick={() => selectIndex(index)}>
               <span className="trust-dot">{index + 1}</span>
-              <span><b>{level.label}</b><small>{disabled ? 'Unavailable here' : level.detail}</small></span>
+              <span><b>{level.label}</b><small>{disabled ? 'Needs a served page - this file is open from disk' : level.detail}</small></span>
             </button>
           )
         })}
         </div>
       </div>
+      {!highAvailable ? <p className="trust-note">High works on the hosted version. There is no back end anywhere in this page - it is a browser API (showDirectoryPicker) that a file opened directly from disk cannot call.</p> : null}
     </fieldset>
   )
 }

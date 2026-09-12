@@ -42,6 +42,7 @@ h1 span { color: var(--fg-muted); }
 .selected .trust-dot { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .trust-track b, .trust-track small { display: block; }
 .trust-track b { font-size: 12px; font-weight: 600; }
+.trust-note { clear: both; margin: 12px 0 0; color: var(--fg-muted); font-size: 11px; line-height: 1.5; }
 .trust-track small { margin-top: 2px; color: var(--fg-subtle); font-size: 9px; }
 .pipeline-nav { display: grid; grid-template-columns: repeat(4, 1fr); margin-bottom: 14px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .pipeline-nav div { display: flex; align-items: center; gap: 9px; padding: 12px 15px; color: var(--fg-muted); border-right: 1px solid var(--border); background: var(--surface-1); }
