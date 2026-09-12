@@ -148,6 +148,39 @@ export default function App() {
     setSession((current) => ({ ...current, setupFiles: files.sort((a, b) => a.name.localeCompare(b.name)) }))
   }
 
+  // D-23: a trust downgrade must not silently discard state. Confirm first, name
+  // what is lost, offer the export on the step where the data can still be saved
+  // (High -> Medium can hold a session file; Low cannot). Clear localStorage on
+  // the way out of High regardless of destination, so High -> Medium -> refresh
+  // does not silently restore data Medium claims not to persist.
+  const TRUST_RANK = { low: 0, medium: 1, high: 2 }
+
+  function changeTrust(next) {
+    const isDowngrade = TRUST_RANK[next] < TRUST_RANK[trust]
+    const hasState = session.setupFiles.length > 0 || report !== null
+
+    if (isDowngrade && trust === 'high' && hasState) {
+      const wantsExport = window.confirm(
+        `Leaving High trust stops saving your session in this browser (${session.setupFiles.length} file(s)` +
+        `${report ? ', the current report' : ''}). Export it as a file first?`
+      )
+      if (wantsExport) downloadJson('left-the-chat-session.json', { ...session, report, hash })
+    }
+
+    if (next === 'low' && isDowngrade && hasState) {
+      const proceed = window.confirm(
+        `Switching to Low trust clears ${session.setupFiles.length} file(s)` +
+        `${report ? ' and the current report' : ''} from memory. Continue?`
+      )
+      if (!proceed) return
+    }
+
+    if (trust === 'high' && next !== 'high') localStorage.removeItem('left-the-chat-session')
+
+    setTrust(next)
+    if (next === 'low') { setSession(emptySession); setReport(null); setHash('') }
+  }
+
   async function copy(value, id) {
     if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value)
     else {
@@ -194,7 +227,7 @@ export default function App() {
           </div>
         </section>
 
-        <TrustSlider value={trust} onChange={(level) => { setTrust(level); if (level === 'low') { setSession(emptySession); setReport(null); setHash('') } }} />
+        <TrustSlider value={trust} onChange={changeTrust} />
 
         <section className="trust-guide" aria-label="Trust level differences">
           {trustModes.map((mode) => <article className={trust === mode.id ? 'selected' : ''} key={mode.id}><span>{mode.label}</span><h2>{mode.title}</h2><p>{mode.detail}</p></article>)}
@@ -208,6 +241,7 @@ export default function App() {
               <p>{standaloneFile ? 'High is still selected, and you can use manual files and folders below. Browsers only allow a reusable folder connection from a trusted local address. The npm command starts that address; it does not add a backend or upload your files.' : 'This browser does not provide the folder permission used by High trust. Manual file and folder selection still works, or open the app in a current desktop version of Chrome or Edge.'}</p>
             </div>
             {standaloneFile ? <div className="local-setup">
+              <p className="install-note-easiest">Easiest: open <a href="https://tools.youngleaders.tech/prompt-auditor" target="_blank" rel="noreferrer">tools.youngleaders.tech/prompt-auditor</a> - same file, nothing to install.</p>
               <div><span>1</span><div><strong>Check Node.js and npm</strong><p>Open Terminal on macOS or PowerShell on Windows, then run:</p><pre>node --version{`\n`}npm --version</pre><button type="button" onClick={() => copy('node --version\nnpm --version', 'npm-check')}>{copied === 'npm-check' ? 'Copied' : 'Copy check commands'}</button></div></div>
               <div><span>2</span><div><strong>Start the local website</strong><p>In the unzipped repository folder, run:</p><pre>npm install{`\n`}npm run dev</pre><button type="button" onClick={() => copy('npm install\nnpm run dev', 'npm-run')}>{copied === 'npm-run' ? 'Copied' : 'Copy run commands'}</button></div></div>
               <p className="install-note">If either check command is missing, install the current <a href="https://nodejs.org/en/download" target="_blank" rel="noreferrer">Node.js LTS release</a>. npm is included with Node.js. Then open the localhost address printed in the terminal.</p>
