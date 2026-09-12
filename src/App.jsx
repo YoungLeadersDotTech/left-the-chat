@@ -25,7 +25,6 @@ export default function App() {
   const [report, setReport] = useState(null)
   const [hash, setHash] = useState('')
   const [copied, setCopied] = useState('')
-  const [launchDir, setLaunchDir] = useState('')
   const [dragActive, setDragActive] = useState(false)
   const standaloneFile = location.protocol === 'file:'
   const directoryPickerSupported = typeof window.showDirectoryPicker === 'function'
@@ -200,7 +199,6 @@ export default function App() {
     })
   }
 
-  const logPath = launchDir ? `~/.claude/projects/${launchDir.replace(/[\\/.]/g, '-').replace(/^-+|-+$/g, '')}/` : 'Enter a launch directory to compute the log path.'
   const baseline = session.baseline
   const percent = (now, before) => before ? Math.round(((now - before) / before) * 100) : 0
 
@@ -275,7 +273,6 @@ export default function App() {
                 <select value={session.parser} onChange={(event) => setSession((current) => ({ ...current, parser: event.target.value }))}><option value="auto">Auto detect</option><option value="claude-code">Claude Code</option><option value="generic">Other (generic JSON or JSONL)</option></select>
               </div>
               <textarea className="large-input" placeholder='{"tools":["Read"],"errors":[],"metrics":{"durationMs":1240,"inputTokens":820,"outputTokens":210}}' value={session.telemetry} onChange={(event) => setSession((current) => ({ ...current, telemetry: event.target.value }))} />
-              {trust === 'low' ? <div className="path-helper"><input placeholder="Launch directory, e.g. ~/projects/my-project" value={launchDir} onChange={(event) => setLaunchDir(event.target.value)} /><code>{logPath}</code></div> : null}
               <button className="primary-button" type="button" onClick={runAudit}><Icon name="activity" /> Run deterministic audit</button>
             </section>
           </div>
