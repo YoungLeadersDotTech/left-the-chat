@@ -101,6 +101,10 @@ export default function App() {
     const next = enrichAudit(staticAudit, telemetry)
     setReport(next)
     setHash(await sha256(next))
+    // T-45: an unset baseline reads "Not set" on the Closed metric, the one number on
+    // screen that looks broken on a first run. Auto-set it so every run after the first
+    // has something real to compare against; the button still lets you reset it later.
+    setSession((current) => current.baseline ? current : { ...current, baseline: next })
   }
 
   async function addFiles(fileList) {
@@ -310,19 +314,21 @@ export default function App() {
               <textarea className="large-input" placeholder='{"tools":["Read"],"errors":[],"metrics":{"durationMs":1240,"inputTokens":820,"outputTokens":210}}' value={session.telemetry} onChange={(event) => setSession((current) => ({ ...current, telemetry: event.target.value }))} />
               <button className="primary-button" type="button" onClick={runAudit}><Icon name="activity" /> Run deterministic audit</button>
             </section>
-          </div>
 
-          <aside className="report-column">
-            <section className="report-head"><div><p className="eyebrow">Findings for your prompt</p><h2>{report ? `${criticalCount} critical ${criticalCount === 1 ? 'finding' : 'findings'}` : shownReport ? `${shownReport.findings.length} from the files alone` : hasMeaningfulInput ? 'Waiting for input' : 'Try the example below'}</h2></div>{hash ? <code title={hash}>SHA-256 · {hash.slice(0, 10)}</code> : null}</section>
-            <Findings report={shownReport} showNudge={!shownReport && !hasMeaningfulInput} onUseExample={() => updatePastedSetup(EXAMPLE_PROMPT)} />
-            {report ? <>
-              <div className="metrics-grid">
-                <Metric label="Tokens" value={report.metrics.totalTokens.toLocaleString()} delta={baseline ? percent(report.metrics.totalTokens, baseline.metrics.totalTokens) : undefined} />
-                <Metric label="Duration" value={`${(report.metrics.durationMs / 1000).toFixed(2)}s`} delta={baseline ? percent(report.metrics.durationMs, baseline.metrics.durationMs) : undefined} />
-                <Metric label="Errors" value={report.metrics.errorCount} delta={baseline ? report.metrics.errorCount - baseline.metrics.errorCount : undefined} />
-                <Metric label="Closed" value={baseline ? Math.max(0, baseline.metrics.findingCount - report.metrics.findingCount) : 'Not set'} />
-              </div>
-              <p className="cost-note">Estimated cost ${report.metrics.estimatedCostUsd.toFixed(6)} · reference rates {report.pricingTable.version}</p>
+            {report ? (
+              <section className="metrics-panel">
+                <div className="metrics-grid">
+                  <Metric label="Tokens" value={report.metrics.totalTokens.toLocaleString()} delta={baseline ? percent(report.metrics.totalTokens, baseline.metrics.totalTokens) : undefined} />
+                  <Metric label="Duration" value={`${(report.metrics.durationMs / 1000).toFixed(2)}s`} delta={baseline ? percent(report.metrics.durationMs, baseline.metrics.durationMs) : undefined} />
+                  <Metric label="Errors" value={report.metrics.errorCount} delta={baseline ? report.metrics.errorCount - baseline.metrics.errorCount : undefined} />
+                  <Metric label="Closed" value={baseline ? Math.max(0, baseline.metrics.findingCount - report.metrics.findingCount) : 'Not set'} />
+                </div>
+                <p className="cost-note">Estimated cost ${report.metrics.estimatedCostUsd.toFixed(6)} · reference rates {report.pricingTable.version}</p>
+                <button className="baseline-button" type="button" onClick={() => setSession((current) => ({ ...current, baseline: report }))}>Use this run as baseline</button>
+              </section>
+            ) : null}
+
+            {report ? (
               <section className="fix-prompt">
                 <div><span>04</span><h3>Copy the fix</h3><button type="button" onClick={() => copy(promptB, 'b')}><Icon name={copied === 'b' ? 'check' : 'copy'} size={14} />{copied === 'b' ? 'Copied' : 'Copy'}</button></div>
                 <div className="code-block">
@@ -330,8 +336,12 @@ export default function App() {
                   <button type="button" className="inline-copy" aria-label="Copy Prompt B" onClick={() => copy(promptB, 'b-inline')}><Icon name={copied === 'b-inline' ? 'check' : 'copy'} size={14} /></button>
                 </div>
               </section>
-              <button className="baseline-button" type="button" onClick={() => setSession((current) => ({ ...current, baseline: report }))}>Use this run as baseline</button>
-            </> : null}
+            ) : null}
+          </div>
+
+          <aside className="report-column">
+            <section className="report-head"><div><p className="eyebrow">Findings for your prompt</p><h2>{report ? `${criticalCount} critical ${criticalCount === 1 ? 'finding' : 'findings'}` : shownReport ? `${shownReport.findings.length} from the files alone` : hasMeaningfulInput ? 'Waiting for input' : 'Try the example below'}</h2></div>{hash ? <code title={hash}>SHA-256 · {hash.slice(0, 10)}</code> : null}</section>
+            <Findings report={shownReport} showNudge={!shownReport && !hasMeaningfulInput} onUseExample={() => updatePastedSetup(EXAMPLE_PROMPT)} />
           </aside>
         </section>
 
