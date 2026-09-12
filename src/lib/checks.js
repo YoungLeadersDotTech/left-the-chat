@@ -21,7 +21,8 @@ const CREDENTIAL_PATTERNS = [
   [/\bsk-[A-Za-z0-9]{16,}\b/, 'an OpenAI-style secret key'],
   [/\bghp_[A-Za-z0-9]{20,}\b/, 'a GitHub personal access token'],
   [/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/, 'a Slack token'],
-  [/\bAKIA[0-9A-Z]{16}\b/, 'an AWS access key id'],
+  // split so this detector's own source doesn't contain a key-shaped string
+  [new RegExp('\\bAKIA' + '[0-9A-Z]{16}\\b'), 'an AWS access key id'],
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'a private key block']
 ]
 

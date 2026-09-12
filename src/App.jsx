@@ -183,7 +183,7 @@ export default function App() {
                 <select value={session.parser} onChange={(event) => setSession((current) => ({ ...current, parser: event.target.value }))}><option value="auto">Auto detect</option><option value="claude-code">Claude Code</option><option value="opencode">OpenCode</option></select>
               </div>
               <textarea className="large-input" placeholder='{"tools":["Read"],"errors":[],"metrics":{"durationMs":1240,"inputTokens":820,"outputTokens":210}}' value={session.telemetry} onChange={(event) => setSession((current) => ({ ...current, telemetry: event.target.value }))} />
-              {trust === 'low' ? <div className="path-helper"><input placeholder="Launch directory, e.g. /Users/me/project" value={launchDir} onChange={(event) => setLaunchDir(event.target.value)} /><code>{logPath}</code></div> : null}
+              {trust === 'low' ? <div className="path-helper"><input placeholder="Launch directory, e.g. ~/projects/my-project" value={launchDir} onChange={(event) => setLaunchDir(event.target.value)} /><code>{logPath}</code></div> : null}
               <button className="primary-button" type="button" onClick={runAudit}><Icon name="activity" /> Run deterministic audit</button>
             </section>
           </div>
