@@ -1,0 +1,20 @@
+# Paths the disclosure gate skips. One glob per line.
+#
+# This file is deliberately empty of active entries.
+#
+# It used to exempt tests/fixtures/* and tests/test_disclosure_gate.py, on the
+# reasoning that fixtures must contain blocked terms to be useful. That was true
+# and the conclusion was still wrong: those files are git-tracked, so exempting
+# them from the GATE did nothing to exempt them from PUBLICATION. On 2026-09-11
+# they carried 36 occurrences of real blocking terms and the gate reported PASS
+# over every one - more than the 21 that had been scrubbed from the plan folder
+# the same morning, because a day spent writing tests that quote real terms had
+# added them faster than they were being removed.
+#
+# The fix was to stop needing the exemption: the fixtures and the test suite now
+# use invented vocabulary, and key-shaped strings are assembled at runtime rather
+# than written contiguously. The gate scans every file in this repo, including
+# itself and its own tests.
+#
+# Before adding a line here, check whether the file is tracked. If it is, an
+# entry here hides the leak rather than preventing it.

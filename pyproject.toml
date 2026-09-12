@@ -1,0 +1,11 @@
+[project]
+name = "left-the-chat"
+version = "0.1.0"
+description = "Team Left the Chat - AI Tinkerers Dublin hackathon, September 2026"
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
