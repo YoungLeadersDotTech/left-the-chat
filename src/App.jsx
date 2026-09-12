@@ -53,7 +53,7 @@ export default function App() {
       Promise.resolve(context.registerTool({
         name: 'run_deterministic_audit',
         title: 'Run deterministic audit',
-        description: 'Audit pasted agent setup text against runtime telemetry and display the resulting findings.',
+        description: 'Audit a pasted prompt against runtime telemetry and display the resulting findings.',
         inputSchema: {
           type: 'object',
           properties: {
