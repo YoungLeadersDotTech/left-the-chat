@@ -5,15 +5,13 @@ npm install
 npm run dev
 ```
 
-A composable React workspace for prototyping AI conversations, streaming responses,
-and live model controls. It starts without environment variables and uses a clearly
-labelled mock model until a server-side API key is provided.
+A privacy-first, deterministic audit loop for agent setup files and runtime telemetry.
+Everything runs in the browser: no backend, API key, upload, or network call is required.
 
-## Configuration
+## Standalone build
 
-Copy `.env.example` to `.env` only when you want to connect a model. Never prefix
-the API key with `VITE_`; the development proxy reads `OPENAI_API_KEY` server-side,
-and all client model traffic passes through `src/lib/ai.js`.
+Run `npm run build`, then copy `dist/index.html` anywhere. JavaScript and CSS are
+inlined, so the file can be opened directly without a server.
 
 ## Scripts
 
@@ -24,9 +22,9 @@ and all client model traffic passes through `src/lib/ai.js`.
 ## Project shape
 
 - `src/components/` contains reusable UI primitives and panels.
-- `src/pages/` composes product surfaces from those primitives.
-- `src/state/` owns shared React context and hooks.
-- `src/lib/ai.js` is the single client adapter for model calls.
+- `src/lib/audit.js` contains deterministic setup checks and prompt generation.
+- `src/lib/parsers.js` normalizes Claude Code, OpenCode, JSON, and JSONL telemetry.
+- `src/lib/deterministic.js` provides stable serialization and SHA-256 hashing.
 - `src/styles/` contains theme tokens and plain CSS.
 
 ## Hackathon context
